@@ -13,7 +13,7 @@
  * modules, the session and the store are handed over on `window` and the app
  * carries on being what it is.
  */
-import { requireSession, signOut } from "./auth.js";
+import { requireSession, signOut, getConfig } from "./auth.js";
 import { listWidgets, saveWidget, deleteWidget, migrateLocalWidgets } from "./store.js";
 
 /* Load order matters and mirrors what index.html used to declare inline.
@@ -82,6 +82,26 @@ function mountUserChip(user) {
 
 async function main() {
   shroud("Checking your session…");
+
+  /* Unconfigured means local dev, not a broken deployment. `python3 server.py`
+     with no .env.local has to keep running the whole app with zero setup —
+     that is the property CLAUDE.md §2 defends, and gating it behind a login
+     that cannot exist would quietly end it. No session, no store: widgets last
+     until reload and app.js says so when a save has nowhere to go.
+     Hosted, SUPABASE_URL is always set, so this branch cannot be reached by a
+     misconfigured Vercel project — that lands on the "not configured" error
+     from getClient() instead, which is what you want there. */
+  const cfg = await getConfig();
+  if (!cfg.supabaseUrl || !cfg.supabaseAnonKey) {
+    console.warn("[dmb] no Supabase config — running signed-out, widgets are session-only");
+    window.DMB_STORE = null;
+    for (const src of APP_SCRIPTS) await loadScript(src);
+    document.body.classList.remove("booting");
+    const shroudEl = document.getElementById("boot-shroud");
+    if (shroudEl) shroudEl.remove();
+    return;
+  }
+
   const { client, user } = await requireSession();
 
   // The app talks to the database through this and nothing else. Bound to the

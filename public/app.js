@@ -3078,8 +3078,15 @@
   function saveWidgetRemote(def) {
     const store = widgetStore();
     if (!store) {
-      setStatus(`Widget “${def.name}” is in this session only — not signed in to a gallery`, "err");
-      return Promise.resolve(false);
+      // Deferred deliberately. Callers set their own "Added widget …" status
+      // *after* calling this, synchronously, so a synchronous warning here
+      // would be overwritten within the same tick and the user would never see
+      // it. The network-failure path below lands late for free; this one has
+      // to be pushed past the caller by hand.
+      return Promise.resolve().then(() => {
+        setStatus(`Widget “${def.name}” is in this session only — not signed in to a gallery`, "warn");
+        return false;
+      });
     }
     const { id, name, desc, html, css, product, slots, sourceUrl } = def;
     return store.save({ id, name, desc, html, css, product, slots, sourceUrl }).then(
