@@ -1,0 +1,782 @@
+/* ---------- App chrome ---------- */
+* { box-sizing: border-box; }
+
+/* html:root (not bare :root) so this always outranks the Tailwind CDN's own
+   :root/.dark blocks, which the CDN re-injects *after* this stylesheet in
+   <head> — equal specificity would otherwise let its same-named --accent
+   (a different semantic role in that token set) win by source order. */
+html:root {
+  --bg: var(--background);
+  --panel: var(--card);
+  --panel-2: var(--secondary);
+  --line: var(--border);
+  --text: var(--foreground);
+  --muted: var(--muted-foreground);
+  --accent: var(--primary);
+  --accent-2: var(--ring);
+  --danger: var(--destructive);
+  --ok: var(--chart-2);
+  --warn: var(--chart-5);
+
+  /* Readable text for the three status tints below. Each status colour is a
+     mid-tone that sits on its own ~10%-opacity wash of itself, so it needs
+     pushing *away* from that wash to read: mixing toward --foreground
+     darkens it on a light page and lightens it on a dark one, which is why
+     these are derived rather than the hardcoded pastels they replaced (those
+     were dark-theme values and vanished into the wash once the app went
+     light). Ratios are tuned to clear WCAG AA 4.5:1 at the 11.5px these are
+     rendered at — measured on the light theme at err 6.5, ok 5.5, warn 5.3.
+     Re-measure against the tint, not the panel, if you retune them. */
+  --danger-ink: color-mix(in srgb, var(--danger) 72%, var(--foreground));
+  --ok-ink: color-mix(in srgb, var(--ok) 72%, var(--foreground));
+  --warn-ink: color-mix(in srgb, var(--warn) 55%, var(--foreground));
+}
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+body { display: flex; flex-direction: column; overflow: hidden auto; min-width: 1080px; }
+
+/* ---------- Top bar ---------- */
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 16px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  flex: 0 0 auto;
+}
+
+/* Brand block, top-left of the topbar. `flex: 0 0 auto` so the wordmark never
+   wraps to two lines when the URL field and status compete for width. */
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex: 0 0 auto;
+  font-weight: 700;
+  letter-spacing: .2px;
+  padding-right: 16px;
+  border-right: 1px solid var(--line);
+}
+.brand-name { white-space: nowrap; }
+
+/* The logo is black ink on transparent with an opaque white cursor fill, so
+   it reads as-drawn on the light chrome. The invert is the hedge for the
+   token set's `.dark` class — it flips the X white and the cursor black,
+   which is the correct reading of the same drawing. */
+.brand-logo { width: 28px; height: 28px; display: block; object-fit: contain; }
+.dark .brand-logo { filter: invert(1); }
+
+.url-form { display: flex; gap: 8px; flex: 1; max-width: 720px; align-items: center; }
+
+#url-input {
+  flex: 1;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 9px 12px;
+  font-size: 13px;
+  outline: none;
+}
+#url-input:focus { border-color: var(--accent); }
+
+.scripts-toggle {
+  display: flex; align-items: center; gap: 5px;
+  color: var(--muted); font-size: 12px; white-space: nowrap; cursor: pointer;
+}
+
+#load-btn {
+  background: var(--accent);
+  color: var(--primary-foreground);
+  border: 0;
+  border-radius: 8px;
+  padding: 9px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+#load-btn:hover { background: var(--accent-2); }
+#load-btn[disabled] { opacity: .6; cursor: default; }
+
+.vp-toggle {
+  display: flex;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  flex: 0 0 auto;
+}
+.vp-toggle button {
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  padding: 8px 13px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.vp-toggle button:hover { color: var(--text); }
+.vp-toggle button.on { background: var(--accent); color: var(--primary-foreground); }
+
+.status { margin-left: auto; color: var(--muted); font-size: 12px; white-space: nowrap; }
+.status.err { color: var(--danger); }
+.status.ok { color: var(--ok); }
+/* --warn-ink, not --warn: the raw mid-tone is tuned to sit on its own tinted
+   wash and washes out as plain text on the panel (see the note on those vars). */
+.status.warn { color: var(--warn-ink); }
+
+/* ---------- Signed-in user (topbar, far right) ----------
+   Whose gallery is on screen is load-bearing information now that the library
+   is per-account: a rep demoing on a colleague's laptop needs to see at a
+   glance that these are not their widgets. The email truncates rather than
+   pushing the topbar wider — body has a 1080px min-width and no give. */
+.user-chip[hidden] { display: none; }   /* author display must not beat [hidden] */
+
+.user-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  padding-left: 14px;
+  margin-left: 2px;
+  border-left: 1px solid var(--line);
+}
+
+.user-chip .user-avatar { width: 22px; height: 22px; border-radius: 50%; flex: 0 0 auto; }
+
+.user-chip .user-email {
+  font-size: 12px;
+  color: var(--muted);
+  max-width: 168px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-chip .user-signout {
+  all: unset;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  padding: 4px 8px;
+  border-radius: 7px;
+  border: 1px solid var(--line);
+}
+.user-chip .user-signout:hover { color: var(--text); background: var(--panel-2); }
+
+/* ---------- Boot shroud ----------
+   Covers everything until boot.js has verified a session. Fixed and opaque:
+   the app's chrome must not be readable underneath it, and it is removed from
+   the DOM (not hidden) once the app is up. */
+.boot-shroud {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+}
+
+.boot-inner { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+.boot-inner img { opacity: .85; }
+
+.boot-msg {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  max-width: 420px;
+  text-align: center;
+  white-space: pre-line;
+}
+
+.boot-shroud.boot-error .boot-msg { color: var(--danger-ink); }
+
+/* The app is inert while booting — no flash of an interface the visitor may
+   not be entitled to, and no interaction with a gallery that has not loaded. */
+body.booting .topbar,
+body.booting .layout { visibility: hidden; }
+
+/* ---------- Site-imagery badge (CLAUDE.md §5.11) ----------
+   Informational only. It reports what the page yielded; it never blocks a
+   drop, so it is styled as a quiet pill rather than anything demanding. The
+   empty state (.none) is deliberately visible — a silent badge would leave
+   the rep wondering why the toggle did nothing on a bot-blocked store. */
+.img-badge[hidden] { display: none; }   /* author display must not beat [hidden] */
+
+.img-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+  padding: 7px 11px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+.img-badge:hover { color: var(--text); border-color: var(--accent); }
+.img-badge.ready { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 40%, var(--line)); }
+.img-badge.none { color: var(--muted); opacity: .7; }
+.img-badge.scanning { animation: img-badge-pulse 1.4s ease-in-out infinite; }
+
+@keyframes img-badge-pulse {
+  0%, 100% { opacity: .55; }
+  50%      { opacity: 1; }
+}
+
+/* ---------- Layout ---------- */
+.layout {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 290px 1fr 320px;
+  min-height: 0;
+}
+
+.panel {
+  background: var(--panel);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.editor-panel { border-right: 1px solid var(--line); }
+.gallery-panel { border-left: 1px solid var(--line); }
+
+.panel-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  padding: 14px 14px 10px;
+  border-bottom: 1px solid var(--line);
+}
+.panel-head h2 { margin: 0; font-size: 13px; text-transform: uppercase; letter-spacing: 1px; }
+.panel-sub { color: var(--muted); font-size: 11px; }
+.panel-empty { color: var(--muted); font-size: 12.5px; padding: 8px 4px; }
+
+/* ---------- Editor list ---------- */
+.editor-list { overflow-y: auto; padding: 10px; flex: 1; }
+
+.ed-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  margin-bottom: 4px;
+  background: transparent;
+}
+.ed-row:hover { background: var(--panel-2); border-color: var(--line); }
+.ed-row.hidden-row { opacity: .45; }
+.ed-row.demo-row { border-color: color-mix(in srgb, var(--accent) 45%, transparent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.ed-row.demo-row:hover { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+
+.ed-row .caret,
+.ed-row .caret-spacer {
+  width: 16px;
+  flex: 0 0 auto;
+  text-align: center;
+  font-size: 10px;
+  padding: 3px 0;
+}
+.ed-row.sub-row {
+  border-left: 2px solid var(--line);
+  border-radius: 0 8px 8px 0;
+}
+
+.ed-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12.5px;
+}
+.ed-tag {
+  font-size: 9.5px;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  padding: 1px 5px;
+  border-radius: 4px;
+  text-transform: lowercase;
+  flex: 0 0 auto;
+}
+.demo-row .ed-tag { color: var(--accent-2); border-color: color-mix(in srgb, var(--accent) 50%, transparent); }
+
+.ed-actions { display: flex; gap: 4px; align-items: center; flex: 0 0 auto; }
+
+.icon-btn {
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 5px;
+  line-height: 1;
+}
+.icon-btn:hover { color: var(--text); background: var(--line); }
+.icon-btn.danger:hover { color: var(--danger); }
+
+.ed-color {
+  width: 20px; height: 20px;
+  padding: 0; border: 1px solid var(--line); border-radius: 5px;
+  background: transparent; cursor: pointer;
+}
+.ed-color::-webkit-color-swatch-wrapper { padding: 2px; }
+.ed-color::-webkit-color-swatch { border: 0; border-radius: 3px; }
+
+.ed-divider {
+  margin: 12px 4px 6px;
+  color: var(--muted);
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+/* ---------- Browser ---------- */
+.browser { position: relative; background: #fff; min-width: 0; }
+
+.viewport { position: absolute; inset: 0; overflow: hidden; background: #fff; }
+.viewport.mobile {
+  display: flex;
+  justify-content: center;
+  background: #242835;
+}
+.viewport.mobile iframe {
+  box-shadow: 0 0 0 1px #3a4158, 0 14px 44px rgba(0, 0, 0, .55);
+}
+
+#canvas { width: 100%; height: 100%; border: 0; display: block; }
+
+.browser-empty[hidden], .browser-loading[hidden] { display: none; }
+
+.browser-empty, .browser-loading {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--bg);
+  z-index: 5;
+}
+.browser-empty-inner { max-width: 460px; text-align: center; padding: 24px; }
+.browser-empty h1 { font-size: 20px; margin: 0 0 8px; }
+.browser-empty p { color: var(--muted); font-size: 13.5px; }
+.try-label { margin-top: 22px; text-transform: uppercase; font-size: 11px !important; letter-spacing: 1px; }
+
+.samples { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 10px; }
+.samples button {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 7px 14px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.samples button:hover { border-color: var(--accent); color: var(--accent-2); }
+
+.browser-loading { flex-direction: column; gap: 14px; color: var(--muted); }
+.spinner {
+  width: 34px; height: 34px;
+  border: 3px solid var(--line);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin .8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ---------- Gallery ---------- */
+.collapse-btn {
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1;
+  padding: 3px 8px 5px;
+  cursor: pointer;
+  margin-left: 8px;
+}
+.collapse-btn:hover { color: var(--text); border-color: var(--accent); }
+
+.layout.gallery-collapsed { grid-template-columns: 290px 1fr 38px; }
+.gallery-collapsed .gallery-panel .gallery-list,
+.gallery-collapsed .gallery-panel .gallery-tools,
+.gallery-collapsed .gallery-panel .panel-head h2,
+.gallery-collapsed .gallery-panel .panel-sub { display: none; }
+.gallery-collapsed .gallery-panel .panel-head {
+  border-bottom: 0;
+  justify-content: center;
+  padding: 12px 4px;
+}
+.gallery-collapsed .collapse-btn { margin-left: 0; }
+
+/* Product toggle + name search, between the header and the card list. */
+.gallery-tools {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.product-toggle {
+  display: flex;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.product-toggle button {
+  flex: 1;
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  padding: 7px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.product-toggle button:hover { color: var(--text); }
+.product-toggle button.on { background: var(--accent); color: var(--primary-foreground); }
+#gallery-search {
+  width: 100%;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 7px 10px;
+  font-size: 12.5px;
+  outline: none;
+}
+#gallery-search:focus { border-color: var(--accent); }
+#gallery-search::placeholder { color: var(--muted); }
+
+.gallery-list { overflow-y: auto; padding: 12px; flex: 1; }
+
+.gal-card {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  margin-bottom: 12px;
+  overflow: hidden;
+  cursor: grab;
+  transition: border-color .15s, transform .15s;
+}
+.gal-card:hover { border-color: var(--accent); transform: translateY(-1px); }
+.gal-card:active { cursor: grabbing; }
+.gal-card.dragging { opacity: .5; }
+
+.gal-thumb {
+  height: 110px;
+  background: #fff;
+  overflow: hidden;
+  pointer-events: none;
+  position: relative;
+}
+.gal-scale {
+  transform: scale(.30);
+  transform-origin: 0 0;
+  width: 334%;
+}
+.gal-thumb::after {
+  content: "";
+  position: absolute; inset: 0;
+  background: linear-gradient(to bottom, transparent 70%, rgba(255,255,255,.9));
+}
+
+.gal-card { position: relative; }
+.gal-card.custom-card { border-color: color-mix(in srgb, var(--ok) 35%, transparent); }
+.gal-card.custom-card:hover { border-color: var(--ok); }
+
+.gal-meta { padding: 9px 12px 11px; }
+.gal-meta strong { display: block; font-size: 12.5px; }
+.gal-meta span { color: var(--muted); font-size: 11px; display: block; margin-top: 2px; }
+
+.gal-badge {
+  display: inline-block !important;
+  margin-top: 6px !important;
+  font-size: 9.5px;
+  letter-spacing: .5px;
+  text-transform: uppercase;
+  color: var(--ok);
+  border: 1px solid color-mix(in srgb, var(--ok) 40%, transparent);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+/* Per-card actions: duplicate / edit / delete. Hidden until hover so the
+ * gallery stays a clean drag surface. */
+.gal-actions {
+  position: absolute;
+  top: 6px; right: 6px;
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 7px;
+  background: rgba(15, 17, 23, .82);
+  opacity: 0;
+  transition: opacity .12s;
+}
+.gal-card:hover .gal-actions, .gal-actions:focus-within { opacity: 1; }
+.gal-actions .icon-btn { color: #cdd3e2; font-size: 12.5px; }
+
+/* ---------- Panel head actions ---------- */
+.head-actions { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+
+.head-btn {
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1;
+  padding: 3px 7px 5px;
+  cursor: pointer;
+}
+.head-btn:hover { color: var(--text); border-color: var(--accent); }
+.gallery-collapsed .gallery-panel .head-btn { display: none; }
+
+/* ---------- Widget editor ---------- */
+.wz-overlay[hidden] { display: none; }   /* author display must not beat [hidden] */
+
+.wz-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(6, 8, 13, .72);
+  padding: 24px;
+}
+
+.wz-dialog {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, .55);
+  width: min(1080px, 100%);
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.wz-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 13px 14px;
+  border-bottom: 1px solid var(--line);
+}
+.wz-head h2 { margin: 0; font-size: 13px; text-transform: uppercase; letter-spacing: 1px; }
+.wz-head-note { color: var(--muted); font-size: 11.5px; flex: 1; }
+
+.wz-body {
+  display: grid;
+  grid-template-columns: 1fr 380px;
+  gap: 16px;
+  padding: 14px;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.wz-form { display: flex; flex-direction: column; gap: 11px; min-width: 0; }
+
+/* Import-from-preview-link section (top of the form) */
+.wz-import {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 11px 11px;
+  background: var(--panel-2);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.wz-import-row { display: flex; gap: 8px; margin-top: 5px; }
+.wz-import-row input { flex: 1; margin-top: 0; }
+.wz-import-row button {
+  flex: none;
+  background: var(--accent);
+  border: none;
+  border-radius: 8px;
+  color: var(--primary-foreground);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 0 16px;
+  cursor: pointer;
+}
+.wz-import-row button:hover { filter: brightness(1.12); }
+.wz-import-row button:disabled { opacity: .55; cursor: progress; }
+.wz-import-status {
+  font-size: 11.5px;
+  line-height: 1.4;
+  border-radius: 7px;
+  padding: 7px 9px;
+  border: 1px solid var(--line);
+  color: var(--muted);
+}
+.wz-import-status.ok { color: var(--ok-ink); background: color-mix(in srgb, var(--ok) 8%, transparent); border-color: color-mix(in srgb, var(--ok) 30%, transparent); }
+.wz-import-status.err { color: var(--danger-ink); background: color-mix(in srgb, var(--danger) 10%, transparent); border-color: color-mix(in srgb, var(--danger) 38%, transparent); }
+
+/* Iframe the capture engine renders the preview in. Off-screen, but laid out
+ * for real (never display:none) so the widget measures a real viewport and
+ * picks its true breakpoint. Lazy content does *not* depend on this frame
+ * being on-screen: the capture bootstrap stubs IntersectionObserver so
+ * everything loads eagerly (server.py CAPTURE_BOOTSTRAP) — otherwise photos
+ * would silently depend on frame position and tab visibility. */
+.dmb-capture-frame {
+  position: fixed;
+  left: -20000px;
+  top: 0;
+  height: 1600px;
+  border: 0;
+  pointer-events: none;
+}
+/* Required Reviews/Loyalty choice — decides which gallery tab the widget
+ * lands in. Mirrors the label styling of the fields around it. */
+.wz-product-label {
+  display: flex; justify-content: space-between; align-items: baseline;
+  color: var(--muted); font-size: 11.5px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: .6px;
+}
+.wz-product-label em { font-style: normal; text-transform: none; letter-spacing: 0; font-weight: 400; font-size: 11px; }
+.wz-product-opts { display: flex; gap: 14px; margin-top: 6px; }
+/* .wz-form's generic label/input rules (block, uppercase, full-width) have
+ * the same specificity and come later — out-specify them here. */
+.wz-form .wz-product-opts label {
+  display: flex; align-items: center; gap: 6px;
+  color: var(--text); font-size: 12.5px; cursor: pointer;
+  text-transform: none; letter-spacing: 0; font-weight: 500;
+}
+.wz-form .wz-product-opts input {
+  display: inline-block; width: auto; margin: 0;
+  accent-color: var(--accent); cursor: pointer;
+}
+
+.wz-form label {
+  display: block;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .8px;
+  color: var(--muted);
+}
+.wz-form label em {
+  text-transform: none;
+  letter-spacing: 0;
+  font-style: normal;
+  font-size: 10.5px;
+  color: #5f6880;
+  margin-left: 6px;
+}
+.wz-form input, .wz-form textarea {
+  display: block;
+  width: 100%;
+  margin-top: 5px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 8px 10px;
+  font-size: 12.5px;
+  outline: none;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.wz-form textarea {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  resize: vertical;
+  white-space: pre;
+  overflow-wrap: normal;
+}
+.wz-form input:focus, .wz-form textarea:focus { border-color: var(--accent); }
+
+/* Sticky so the preview stays in view while the HTML/CSS boxes scroll. */
+.wz-side {
+  display: flex; flex-direction: column; gap: 8px; min-width: 0;
+  position: sticky; top: 0; align-self: start; max-height: 100%;
+}
+.wz-side-head {
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 11px; text-transform: uppercase; letter-spacing: .8px; color: var(--muted);
+}
+.wz-check {
+  display: flex; align-items: center; gap: 5px;
+  text-transform: none; letter-spacing: 0; font-size: 11.5px; cursor: pointer;
+}
+
+/* Polarity pair: one widget, two stores. Each box scrolls on its own so a
+ * long capture doesn't push the other polarity out of view. */
+.wz-preview { display: flex; flex-direction: column; gap: 6px; }
+.wz-pv {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: auto;
+  max-height: 185px;
+  min-height: 64px;
+}
+.wz-pv[data-pol="light"] { background: #fff; }
+.wz-pv[data-pol="dark"] { background: #000; }
+.wz-pv-tag {
+  position: sticky; top: 4px; float: right; margin: 4px 4px 0 0;
+  font-size: 9.5px; text-transform: uppercase; letter-spacing: .7px;
+  padding: 2px 7px; border-radius: 99px;
+  background: rgba(127, 127, 127, .22); color: #9aa0ab;
+  pointer-events: none;
+}
+.wz-preview .dmb-module { padding: 18px 14px; }
+
+.wz-issues { display: flex; flex-direction: column; gap: 5px; }
+.wz-issue {
+  font-size: 11.5px;
+  line-height: 1.4;
+  border-radius: 7px;
+  padding: 7px 9px;
+  border: 1px solid transparent;
+}
+.wz-issue.err { color: var(--danger-ink); background: color-mix(in srgb, var(--danger) 10%, transparent); border-color: color-mix(in srgb, var(--danger) 38%, transparent); }
+.wz-issue.warn { color: var(--warn-ink); background: color-mix(in srgb, var(--warn) 12%, transparent); border-color: color-mix(in srgb, var(--warn) 34%, transparent); }
+.wz-issue.ok { color: var(--ok-ink); background: color-mix(in srgb, var(--ok) 8%, transparent); border-color: color-mix(in srgb, var(--ok) 30%, transparent); }
+
+.wz-help { color: var(--muted); font-size: 11px; line-height: 1.75; margin-top: auto; }
+.wz-help code {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 1px 4px;
+  font-size: 10.5px;
+}
+
+.wz-foot {
+  display: flex; align-items: center; gap: 8px;
+  padding: 11px 14px;
+  border-top: 1px solid var(--line);
+}
+.wz-spacer { flex: 1; }
+.wz-btn, .wz-btn-ghost {
+  border-radius: 8px;
+  padding: 8px 15px;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.wz-btn { background: var(--accent); border: 0; color: var(--primary-foreground); }
+.wz-btn:hover { background: var(--accent-2); }
+.wz-btn[disabled] { opacity: .45; cursor: default; }
+.wz-btn-ghost { background: transparent; border: 1px solid var(--line); color: var(--text); }
+.wz-btn-ghost:hover { border-color: var(--accent); }
+.wz-btn-ghost.wz-danger { color: var(--danger); }
+.wz-btn-ghost.wz-danger:hover { border-color: var(--danger); }
+.wz-btn-ghost[hidden] { display: none; }

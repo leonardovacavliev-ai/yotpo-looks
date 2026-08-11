@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sign in — Yotpo Looks</title>
+<link rel="icon" type="image/png" href="logo.png">
+<!--
+  Deliberately self-contained: no Tailwind CDN, no app.css, no app.js. This is
+  the one page an unauthenticated stranger can reach, so it loads nothing it
+  does not need. The tokens below are copied from index.html's palette rather
+  than imported, which is a small duplication bought on purpose — the login
+  screen should still render if the app's stylesheet is mid-edit.
+-->
+<style>
+  :root {
+    --bg: oklch(0.985 0 0);
+    --card: oklch(1 0 0);
+    --text: oklch(0.145 0 0);
+    --muted: oklch(0.556 0 0);
+    --line: oklch(0.922 0 0);
+    --primary: oklch(0.205 0 0);
+    --primary-fg: oklch(0.985 0 0);
+    --danger: oklch(0.577 0.245 27.325);
+    --radius: 0.625rem;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    display: flex; align-items: center; justify-content: center; padding: 24px;
+  }
+  .card {
+    width: 100%; max-width: 400px; background: var(--card);
+    border: 1px solid var(--line); border-radius: calc(var(--radius) + 4px);
+    padding: 36px 32px 30px; text-align: center;
+    box-shadow: 0 1px 2px rgba(0,0,0,.04), 0 8px 28px rgba(0,0,0,.06);
+  }
+  .brand { display: flex; align-items: center; justify-content: center; gap: 9px; margin-bottom: 22px; }
+  .brand img { width: 30px; height: 30px; }
+  .brand span { font-size: 17px; font-weight: 640; letter-spacing: -.01em; }
+  h1 { font-size: 19px; font-weight: 600; margin: 0 0 6px; letter-spacing: -.01em; }
+  .sub { color: var(--muted); margin: 0 0 26px; font-size: 13.5px; }
+  button.google {
+    width: 100%; display: flex; align-items: center; justify-content: center; gap: 10px;
+    padding: 11px 16px; font: inherit; font-weight: 550; cursor: pointer;
+    background: var(--card); color: var(--text);
+    border: 1px solid var(--line); border-radius: var(--radius);
+    transition: background .12s ease, border-color .12s ease;
+  }
+  button.google:hover:not(:disabled) { background: oklch(0.97 0 0); border-color: oklch(0.86 0 0); }
+  button.google:disabled { opacity: .6; cursor: default; }
+  button.google svg { width: 18px; height: 18px; flex: 0 0 auto; }
+  .msg {
+    margin: 0 0 20px; padding: 11px 13px; border-radius: var(--radius);
+    font-size: 13px; text-align: left; white-space: pre-line;
+  }
+  .msg.err { background: color-mix(in srgb, var(--danger) 9%, transparent);
+             color: color-mix(in srgb, var(--danger) 72%, var(--text));
+             border: 1px solid color-mix(in srgb, var(--danger) 25%, transparent); }
+  .msg.info { background: oklch(0.97 0 0); color: var(--muted); border: 1px solid var(--line); }
+  .foot { margin: 22px 0 0; font-size: 12px; color: var(--muted); }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+  <main class="card">
+    <div class="brand">
+      <img src="logo.png" alt="" width="30" height="30">
+      <span>Yotpo&nbsp;Looks</span>
+    </div>
+    <h1>Sign in</h1>
+    <p class="sub">Your widget gallery is private to your account.</p>
+
+    <p id="message" class="msg" hidden></p>
+
+    <button id="google" class="google" type="button">
+      <svg viewBox="0 0 18 18" aria-hidden="true">
+        <path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92c1.7-1.57 2.68-3.88 2.68-6.62z"/>
+        <path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.92-2.26c-.81.54-1.84.86-3.04.86-2.34 0-4.32-1.58-5.03-3.7H.96v2.33A9 9 0 0 0 9 18z"/>
+        <path fill="#FBBC05" d="M3.97 10.72a5.4 5.4 0 0 1 0-3.44V4.95H.96a9 9 0 0 0 0 8.1l3.01-2.33z"/>
+        <path fill="#EA4335" d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.58C13.46.89 11.42 0 9 0A9 9 0 0 0 .96 4.95l3.01 2.33C4.68 5.16 6.66 3.58 9 3.58z"/>
+      </svg>
+      <span id="google-label">Continue with Google</span>
+    </button>
+
+    <p class="foot">Yotpo Looks — sales demo builder</p>
+  </main>
+
+<script type="module">
+import { getConfig, getClient, emailAllowed, setSessionCookie, clearSessionCookie } from "./auth.js";
+
+const btn = document.getElementById("google");
+const btnLabel = document.getElementById("google-label");
+const msgEl = document.getElementById("message");
+
+function message(text, kind) {
+  msgEl.textContent = text;
+  msgEl.className = "msg " + (kind || "info");
+  msgEl.hidden = false;
+}
+function busy(on, label) {
+  btn.disabled = on;
+  btnLabel.textContent = label || "Continue with Google";
+}
+
+/* Supabase reports OAuth failures in the URL fragment, and the allowlist
+   bounce sends ?denied=<email> back here from auth.js. Read both before
+   anything else, so the reason survives the session check below. */
+function urlComplaint() {
+  const denied = new URLSearchParams(location.search).get("denied");
+  if (denied) {
+    return `${denied} isn't on the access list.\n\nThis app is limited to Yotpo accounts. Ask the owner to add your address, then try again.`;
+  }
+  const hash = new URLSearchParams(location.hash.replace(/^#/, ""));
+  const err = hash.get("error_description") || hash.get("error");
+  return err ? "Google sign-in failed: " + err.replace(/\+/g, " ") : "";
+}
+
+async function main() {
+  const complaint = urlComplaint();
+  if (complaint) {
+    message(complaint, "err");
+    clearSessionCookie();
+    history.replaceState(null, "", location.pathname);
+  }
+
+  const cfg = await getConfig();
+  if (!cfg.supabaseUrl || !cfg.supabaseAnonKey) {
+    message(
+      "Supabase isn't configured yet.\n\nSet SUPABASE_URL and SUPABASE_ANON_KEY in the Vercel project settings (or .env.local for local dev) — see DEPLOY.md.",
+      "err"
+    );
+    busy(true, "Unavailable");
+    return;
+  }
+
+  const client = await getClient();
+
+  /* Returning from Google: the client exchanges the code during init, so by
+     the time getSession() resolves we either have a session or we don't. */
+  const { data } = await client.auth.getSession();
+  const session = data && data.session;
+  if (session) {
+    if (emailAllowed(session.user.email, cfg)) {
+      setSessionCookie(session.access_token, session.expires_in);
+      location.replace("index.html");
+      return;
+    }
+    await client.auth.signOut();
+    clearSessionCookie();
+    message(
+      `${session.user.email} isn't on the access list.\n\nThis app is limited to Yotpo accounts. Ask the owner to add your address, then try again.`,
+      "err"
+    );
+  }
+
+  btn.addEventListener("click", async () => {
+    busy(true, "Redirecting to Google…");
+    const { error } = await client.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        // Back to this page, not the app: the login screen owns the whole
+        // OAuth round trip, including the allowlist verdict above.
+        redirectTo: location.origin + location.pathname,
+        queryParams: { prompt: "select_account" },
+      },
+    });
+    if (error) {
+      message("Could not start Google sign-in: " + error.message, "err");
+      busy(false);
+    }
+  });
+}
+
+main().catch((err) => {
+  console.error(err);
+  message("Something went wrong starting the sign-in: " + err.message, "err");
+  busy(false);
+});
+</script>
+</body>
+</html>

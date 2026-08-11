@@ -1,0 +1,6 @@
+# Intentionally empty.
+#
+# The proxy is standard library only, which is the whole reason it survived the
+# move from a local Python server to a Vercel function unchanged (CLAUDE.md §2:
+# this machine has no npm and no pip installs). Adding a dependency here means
+# local dev can no longer run with zero installs — think twice before doing it.

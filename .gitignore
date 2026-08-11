@@ -1,0 +1,25 @@
+# Local Supabase settings for `python3 server.py`. Never commit this: the
+# hosted app reads the same values from Vercel's environment variables, so a
+# committed copy is duplication at best and a leaked key at worst.
+.env.local
+.env
+
+# macOS
+.DS_Store
+._*
+.Spotlight-V100
+.Trashes
+
+# Editors
+.vscode/
+.idea/
+*.swp
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Vercel
+.vercel/

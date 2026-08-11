@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Yotpo Looks</title>
+<link rel="icon" type="image/png" href="logo.png">
+<!-- Tailwind Play CDN: no Node/npm on this machine (CLAUDE.md), so the
+     v4 theme tokens below are compiled in-browser rather than via a build
+     step. Only the design tokens are used here (app.css is still plain
+     hand-written CSS) — tw-animate-css has no CDN build and is dropped. -->
+<script src="https://cdn.tailwindcss.com"></script>
+<style type="text/tailwindcss">
+@custom-variant dark (&:is(.dark *));
+
+@layer base {
+  button:not(:disabled),
+  [role='button']:not(:disabled) {
+    cursor: pointer;
+  }
+}
+
+:root {
+  --spacing-small: 2px;
+  --spacing-medium: 10px;
+}
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 12px);
+  --radius-4xl: calc(var(--radius) + 16px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+:root {
+  --radius: 0.625rem;
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+  --chart-1: oklch(0.646 0.222 41.116);
+  --chart-2: oklch(0.6 0.118 184.704);
+  --chart-3: oklch(0.398 0.07 227.392);
+  --chart-4: oklch(0.828 0.189 84.429);
+  --chart-5: oklch(0.769 0.188 70.08);
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
+}
+
+.dark {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+  --chart-1: oklch(0.488 0.243 264.376);
+  --chart-2: oklch(0.696 0.17 162.48);
+  --chart-3: oklch(0.769 0.188 70.08);
+  --chart-4: oklch(0.627 0.265 303.9);
+  --chart-5: oklch(0.645 0.246 16.439);
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.556 0 0);
+}
+</style>
+<link rel="stylesheet" href="app.css">
+</head>
+<body class="booting">
+  <!-- Covers the app until boot.js has a session. Removed, not hidden, once
+       the app is up — a signed-out visitor should never see the chrome of a
+       tool they cannot use. -->
+  <div id="boot-shroud" class="boot-shroud">
+    <div class="boot-inner">
+      <img src="logo.png" alt="" width="34" height="34">
+      <p class="boot-msg">Starting…</p>
+    </div>
+  </div>
+
+  <header class="topbar">
+    <div class="brand">
+      <img class="brand-logo" src="logo.png" alt="" width="28" height="28">
+      <span class="brand-name">Yotpo&nbsp;Looks</span>
+    </div>
+    <form id="url-form" class="url-form">
+      <input id="url-input" type="text" spellcheck="false" autocomplete="off"
+             placeholder="Paste a product page URL, e.g. https://store.com/products/item">
+      <!-- OFF by default since the app went hosted (CLAUDE.md §3.1). Unticked,
+           the canvas iframe is sandboxed and the store's JavaScript genuinely
+           cannot run; ticked, it runs same-origin with a signed-in session,
+           which is a real trade the rep should make on purpose. Client-rendered
+           PDPs still need it — app.js warns on the way in. -->
+      <label class="scripts-toggle" title="Run the store's own JavaScript. Needed for client-rendered pages, but it then runs with the same access as this app — and the page may re-render over your edits. Leave off unless the page looks empty.">
+        <input id="keep-scripts" type="checkbox"> JS
+      </label>
+      <button type="submit" id="load-btn">Load page</button>
+    </form>
+    <div class="vp-toggle" id="vp-toggle">
+      <button data-mode="desktop" class="on" title="Render the page at desktop width (scaled to fit)">Desktop</button>
+      <button data-mode="mobile" title="Render the page at phone width">Mobile</button>
+    </div>
+    <!-- Site-imagery readiness (CLAUDE.md §5.11). Purely informational — it
+         never gates dropping a widget. Click to re-scan the loaded page. -->
+    <button id="img-badge" class="img-badge" hidden type="button"></button>
+    <div id="status" class="status">No page loaded</div>
+    <!-- Filled in by boot.js once the session is known. -->
+    <div id="user-chip" class="user-chip" hidden></div>
+  </header>
+
+  <main class="layout">
+    <aside class="panel editor-panel">
+      <div class="panel-head">
+        <h2>Editor</h2>
+        <span id="section-count" class="panel-sub"></span>
+      </div>
+      <div id="editor-list" class="editor-list">
+        <p class="panel-empty">Page structure will appear here once a product page is loaded.</p>
+      </div>
+    </aside>
+
+    <section class="browser">
+      <div id="browser-empty" class="browser-empty">
+        <div class="browser-empty-inner">
+          <h1>Load a client's product page</h1>
+          <p>Paste any product detail page URL above. The app will render it here,
+             detect its sections, and let you hide competitor modules and drop in yours.</p>
+          <p class="try-label">Try an example:</p>
+          <div class="samples" id="samples">
+            <button data-url="https://www.allbirds.com/products/mens-tree-runner-go">Allbirds — Tree Runner Go</button>
+            <button data-url="https://www.deathwishcoffee.com/products/death-wish-coffee">Death Wish Coffee</button>
+            <button data-url="https://www.brooklinen.com/products/luxe-core-sheet-set">Brooklinen — Luxe Sheets</button>
+          </div>
+        </div>
+      </div>
+      <div id="browser-loading" class="browser-loading" hidden>
+        <div class="spinner"></div>
+        <p>Loading &amp; analyzing page…</p>
+      </div>
+      <div id="viewport" class="viewport">
+        <iframe id="canvas" title="Loaded product page"></iframe>
+      </div>
+    </section>
+
+    <aside class="panel gallery-panel">
+      <div class="panel-head">
+        <h2>Gallery</h2>
+        <span class="panel-sub" id="gallery-sub">Drag onto the page</span>
+        <span class="head-actions">
+          <button id="widget-new" class="head-btn" title="Add a custom widget">＋</button>
+          <button id="gallery-toggle" class="collapse-btn" title="Collapse gallery">›</button>
+        </span>
+      </div>
+      <div class="gallery-tools">
+        <div class="product-toggle" id="product-toggle">
+          <button data-product="reviews" class="on" title="Show Reviews widgets">Reviews</button>
+          <button data-product="loyalty" title="Show Loyalty widgets">Loyalty</button>
+        </div>
+        <input id="gallery-search" type="search" spellcheck="false" autocomplete="off"
+               placeholder="Search widgets by name…">
+      </div>
+      <div id="gallery-list" class="gallery-list"></div>
+    </aside>
+  </main>
+
+  <!-- Widget editor: add a custom gallery widget, or edit/duplicate one. -->
+  <div id="widget-editor" class="wz-overlay" hidden>
+    <div class="wz-dialog" role="dialog" aria-modal="true" aria-labelledby="wz-title">
+      <header class="wz-head">
+        <h2 id="wz-title">New widget</h2>
+        <span class="wz-head-note" id="wz-note"></span>
+        <button id="wz-close" class="icon-btn" title="Close">✕</button>
+      </header>
+
+      <div class="wz-body">
+        <div class="wz-form">
+          <div class="wz-import">
+            <label>Import from a preview link <em>fills the fields below</em>
+              <div class="wz-import-row">
+                <input id="wz-import-url" type="text" spellcheck="false" autocomplete="off"
+                       placeholder="https://yap.yotpo.com/preview-wadmin/?guid=…&amp;widget_instance_id=…">
+                <button id="wz-import-btn" type="button" title="Render the preview and capture the widget as it looks right now">Import</button>
+              </div>
+            </label>
+            <div id="wz-import-status" class="wz-import-status" hidden></div>
+          </div>
+          <div class="wz-product">
+            <span class="wz-product-label">Product <em>required</em></span>
+            <div class="wz-product-opts" id="wz-product">
+              <label><input type="radio" name="wz-product" value="reviews"> Reviews</label>
+              <label><input type="radio" name="wz-product" value="loyalty"> Loyalty</label>
+            </div>
+          </div>
+          <label>Name <em>required</em>
+            <input id="wz-name" type="text" autocomplete="off" placeholder="Loyalty Points Banner">
+          </label>
+          <label>Description
+            <input id="wz-desc" type="text" autocomplete="off" placeholder="Points earned on this purchase">
+          </label>
+          <label>Widget id <em id="wz-id-note">auto from name</em>
+            <input id="wz-id" type="text" autocomplete="off" spellcheck="false">
+          </label>
+          <label>HTML <em>required</em>
+            <textarea id="wz-html" rows="12" spellcheck="false"
+              placeholder='&lt;div class="dmbm-wrap"&gt;…&lt;/div&gt;'></textarea>
+          </label>
+          <label>CSS <em>optional — scoped to the widget automatically</em>
+            <textarea id="wz-css" rows="8" spellcheck="false" placeholder=".dmbm-my-thing { … }"></textarea>
+          </label>
+        </div>
+
+        <div class="wz-side">
+          <div class="wz-side-head">
+            <span>Live preview</span>
+            <label class="wz-check" id="wz-blend-wrap" hidden
+                   title="Preview the Blend toggle — the source store's frozen panels dissolve into the page">
+              <input id="wz-blend" type="checkbox"> blend
+            </label>
+            <label class="wz-check" title="Show the widget with the fonts/colors sampled from the loaded page">
+              <input id="wz-adapt" type="checkbox"> site styling
+            </label>
+          </div>
+          <!-- Polarity pair: the same widget against a light and a dark store,
+               so opposite-polarity legibility failures show up before Save. -->
+          <div id="wz-preview" class="wz-preview">
+            <div class="wz-pv" data-pol="light">
+              <span class="wz-pv-tag">Light store</span>
+              <div class="dmb-module"></div>
+            </div>
+            <div class="wz-pv" data-pol="dark">
+              <span class="wz-pv-tag">Dark store</span>
+              <div class="dmb-module"></div>
+            </div>
+          </div>
+          <div id="wz-issues" class="wz-issues"></div>
+          <div class="wz-help">
+            Variables: <code>--dmb-text</code> <code>--dmb-muted</code> <code>--dmb-accent</code>
+            <code>--dmb-accent-contrast</code> <code>--dmb-border</code> <code>--dmb-radius</code>
+            <code>--dmb-heading-font</code> <code>--dmb-star</code><br>
+            Shared classes: <code>dmbm-wrap</code> <code>dmbm-h</code> <code>dmbm-btn</code>
+            <code>dmbm-btn-ghost</code> <code>dmbm-card</code> <code>dmbm-stars</code>
+            <code>dmbm-muted</code>
+          </div>
+        </div>
+      </div>
+
+      <footer class="wz-foot">
+        <button id="wz-code" class="wz-btn-ghost"
+                title="Copy a registerModule() snippet to paste into public/custom-modules.js">Copy as code</button>
+        <button id="wz-delete" class="wz-btn-ghost wz-danger" hidden>Delete widget</button>
+        <span class="wz-spacer"></span>
+        <button id="wz-cancel" class="wz-btn-ghost">Cancel</button>
+        <button id="wz-save" class="wz-btn">Save widget</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- The app's only script tag. boot.js proves there is a signed-in, allowed
+       user and *then* loads modules.js / custom-modules.js / imagery.js /
+       app.js in that order — the list lives there now, including the
+       commented-out sample-modules.js restore switch (CLAUDE.md §5.4) and the
+       imagery.js line that ROLLBACK-IMAGERY.md tells you to delete. Loading
+       the app here instead would mean the app runs before the session check,
+       which is the one thing the gate exists to prevent. -->
+  <script type="module" src="boot.js"></script>
+</body>
+</html>

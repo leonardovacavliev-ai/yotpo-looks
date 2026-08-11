@@ -1,0 +1,16 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "demo-builder",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["/Users/leonardo.vacavliev/Documents/Demo Modules App-20260810T135255Z-1-001/Demo Modules App/server.py"],
+      "port": 4173
+    },
+    {
+      "name": "demo-builder-attach",
+      "url": "http://localhost:4173",
+      "port": 4173
+    }
+  ]
+}
