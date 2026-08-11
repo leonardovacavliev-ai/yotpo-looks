@@ -125,7 +125,29 @@ body { display: flex; flex-direction: column; overflow: hidden auto; min-width: 
 .vp-toggle button:hover { color: var(--text); }
 .vp-toggle button.on { background: var(--accent); color: var(--primary-foreground); }
 
-.status { margin-left: auto; color: var(--muted); font-size: 12px; white-space: nowrap; }
+/* Two lines, narrow. These messages are sentences ("JS on: the store's own
+   scripts will run…"), and on one line they ran a third of the topbar wide and
+   shoved everything left. Wrapping them into a fixed 260px column keeps the
+   bar's geometry constant whatever the message says: the box is the same width
+   whether it holds "No page loaded" or the JS warning, so nothing shifts as the
+   status changes. The clamp is what makes "two lines" a guarantee rather than a
+   hope — a longer message truncates and setStatus() puts the whole text in the
+   title attribute, since the status is a narration of something the user just
+   did, not the only copy of it. */
+.status {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 11.5px;
+  line-height: 1.35;
+  flex: 0 0 auto;
+  width: 260px;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;   /* a long URL must not widen the column */
+}
 .status.err { color: var(--danger); }
 .status.ok { color: var(--ok); }
 /* --warn-ink, not --warn: the raw mid-tone is tuned to sit on its own tinted
@@ -135,38 +157,89 @@ body { display: flex; flex-direction: column; overflow: hidden auto; min-width: 
 /* ---------- Signed-in user (topbar, far right) ----------
    Whose gallery is on screen is load-bearing information now that the library
    is per-account: a rep demoing on a colleague's laptop needs to see at a
-   glance that these are not their widgets. The email truncates rather than
-   pushing the topbar wider — body has a 1080px min-width and no give. */
+   glance that these are not their widgets. The avatar carries that at rest —
+   a different face is the fastest possible read — and the address and Sign out
+   sit in a popover, one click away, so the topbar spends 26px on the account
+   instead of ~260. */
 .user-chip[hidden] { display: none; }   /* author display must not beat [hidden] */
 
 .user-chip {
+  position: relative;   /* the popover anchors to this */
   display: flex;
   align-items: center;
-  gap: 8px;
   flex: 0 0 auto;
   padding-left: 14px;
   margin-left: 2px;
   border-left: 1px solid var(--line);
 }
 
-.user-chip .user-avatar { width: 22px; height: 22px; border-radius: 50%; flex: 0 0 auto; }
+.user-chip .user-btn {
+  all: unset;
+  display: block;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: 0 0 0 1px var(--line);
+}
+.user-chip .user-btn:hover,
+.user-chip.open .user-btn { box-shadow: 0 0 0 2px var(--accent); }
+.user-chip .user-btn:focus-visible { box-shadow: 0 0 0 2px var(--accent); }
 
+.user-chip .user-avatar { width: 26px; height: 26px; border-radius: 50%; display: block; }
+
+/* Fallback face: a monogram, so a missing avatar still reads as an account
+   rather than as a hole in the topbar. */
+.user-chip .user-initial {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--primary-foreground);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.user-chip .user-pop {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  z-index: 40;                    /* over the canvas, under the widget dialog's 50 */
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  /* Sized so an ordinary work address ("first.last@yotpo.com" ≈ 175px at 12px)
+     sits on one line inside the 12px padding — border-box, so this is 194px of
+     content. Longer addresses wrap rather than truncate; this is the one place
+     the address is shown, so all of it must be readable. */
+  min-width: 220px;
+  padding: 12px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, .18);
+}
+.user-chip .user-pop[hidden] { display: none; }
+
+/* The address is the reason the bubble exists, so it is never truncated here —
+   it wraps instead, and the bubble grows. */
 .user-chip .user-email {
   font-size: 12px;
-  color: var(--muted);
-  max-width: 168px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  color: var(--text);
+  overflow-wrap: anywhere;
 }
 
 .user-chip .user-signout {
   all: unset;
   cursor: pointer;
+  text-align: center;
   font-size: 12px;
   font-weight: 600;
   color: var(--muted);
-  padding: 4px 8px;
+  padding: 6px 10px;
   border-radius: 7px;
   border: 1px solid var(--line);
 }

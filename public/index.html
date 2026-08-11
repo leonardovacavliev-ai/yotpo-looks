@@ -175,7 +175,9 @@
     <!-- Site-imagery readiness (CLAUDE.md §5.11). Purely informational — it
          never gates dropping a widget. Click to re-scan the loaded page. -->
     <button id="img-badge" class="img-badge" hidden type="button"></button>
-    <div id="status" class="status">No page loaded</div>
+    <!-- Fixed-width, two-line clamp (app.css) so the bar's geometry doesn't move
+         as messages change; setStatus() mirrors the text into title. -->
+    <div id="status" class="status" title="No page loaded">No page loaded</div>
     <!-- Filled in by boot.js once the session is known. -->
     <div id="user-chip" class="user-chip" hidden></div>
   </header>

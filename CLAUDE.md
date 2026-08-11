@@ -1605,6 +1605,28 @@ red status saying the widget is in this session only. Keep that.
 `.backup` rather than deleting it. Without this, the cutover would look exactly
 like "the app lost my widgets".
 
+**The account is an avatar and a popover** (2026-08, user request: the topbar
+had become cluttered). `mountUserChip` renders one 26px circle; the address and
+Sign out live in a bubble it opens. The chip's job — telling a rep whose gallery
+is on screen — survives, because a different face is a faster read than a
+truncated address was; what goes away is ~230px of permanent topbar width spent
+on two things you look at deliberately. Details that are load-bearing: the
+bubble dismisses on outside click and Escape but **not** on a click inside it
+(the email is selectable text), the button's `aria-label` is the address rather
+than "account menu" (it is the more useful name, and the avatar is decorative),
+a missing or 404ing avatar falls back to the email's initial in a filled circle
+rather than an empty ring, and the popover's `z-index` sits above the canvas but
+below the widget dialog's 50.
+
+**The status line is a fixed 260px box clamped to two lines**, for the same
+reason (`.status` in app.css). These messages are sentences, and on one nowrap
+line the longest of them shoved the URL field and the viewport toggle left as it
+changed. A fixed box means the topbar's geometry no longer depends on what the
+app is currently saying. `setStatus()` mirrors the text into `title` because a
+clamp can truncate — acceptable only because the status narrates something the
+user just did rather than being the sole copy of it. If a message *needs* to
+survive in full, it does not belong here.
+
 ---
 
 ---
@@ -2107,9 +2129,14 @@ the original spec: saving/sharing configurations).
      the failure this design exists to prevent.
    - **The shroud is removed, not hidden**:
      `document.getElementById('boot-shroud')` → `null` once booted.
-   - **The chip names the account** — `DMB.user().email` matches the topbar,
-     and `Sign out` returns you to `login.html` with the gallery gone on the
-     way back in.
+   - **The chip names the account** — the topbar shows the avatar only, so
+     click it: the popover's address must match `DMB.user().email`, and its
+     `Sign out` returns you to `login.html` with the gallery gone on the way
+     back in. Check the popover dismisses three ways (click the avatar again,
+     click anywhere outside it, Escape) and that a click *inside* it does not
+     dismiss it — the email is selectable text, so that one matters. An
+     account whose provider serves no avatar (or whose avatar 404s) must show
+     the email's initial in a filled circle, never an empty ring.
    - **Isolation is the whole product claim, so check it against a second
      account**, not by reading the policy: sign in as someone else and confirm
      the gallery is empty, then confirm the first account's widgets are still

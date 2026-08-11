@@ -94,8 +94,12 @@
 `;
 
   /* ------------------------------------------------------------ status */
+  /* The status box is a fixed-width two-line clamp (app.css), so a long message
+     can be cut off. The title carries the full text — cheap, and the alternative
+     (letting the box grow) is what made the topbar shift on every message. */
   function setStatus(msg, cls) {
     statusEl.textContent = msg;
+    statusEl.title = msg;
     statusEl.className = "status" + (cls ? " " + cls : "");
   }
 

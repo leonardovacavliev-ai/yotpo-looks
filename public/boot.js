@@ -47,6 +47,12 @@ function shroud(text, isError) {
   el.classList.toggle("boot-error", !!isError);
 }
 
+/* The topbar is crowded (URL field, JS toggle, viewport switch, imagery badge,
+   status), so the account occupies one 26px circle and nothing else. The email
+   and Sign out live in a popover behind it — both are things you read or press
+   deliberately, neither needs to be on screen at all times. Whose gallery is
+   loaded is still one click away, which is what CLAUDE.md §5.13 actually needs
+   ("a rep demoing on a colleague's laptop"): the avatar itself already differs. */
 function mountUserChip(user) {
   const slot = document.getElementById("user-chip");
   if (!slot) return;
@@ -54,30 +60,80 @@ function mountUserChip(user) {
   const avatar = (user.user_metadata && (user.user_metadata.avatar_url || user.user_metadata.picture)) || "";
   slot.innerHTML = "";
 
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "user-btn";
+  btn.title = email;
+  // The email is the accessible name: the avatar is decorative, and "account
+  // menu" would tell a screen-reader user less than the address does.
+  btn.setAttribute("aria-label", email ? "Account: " + email : "Account");
+  btn.setAttribute("aria-haspopup", "true");
+  btn.setAttribute("aria-expanded", "false");
+
   if (avatar) {
     const img = document.createElement("img");
     img.className = "user-avatar";
     img.src = avatar;
     img.alt = "";
-    img.width = 22;
-    img.height = 22;
+    img.width = 26;
+    img.height = 26;
     img.referrerPolicy = "no-referrer";
-    slot.appendChild(img);
+    // Google's CDN 404s an avatar occasionally; an empty circle reads as a
+    // broken app, so fall through to the initial rather than showing one.
+    img.addEventListener("error", () => {
+      img.remove();
+      btn.appendChild(initialEl(email));
+    });
+    btn.appendChild(img);
+  } else {
+    btn.appendChild(initialEl(email));
   }
+  slot.appendChild(btn);
+
+  const pop = document.createElement("div");
+  pop.className = "user-pop";
+  pop.hidden = true;
+
   const label = document.createElement("span");
   label.className = "user-email";
   label.textContent = email;
   label.title = email;
-  slot.appendChild(label);
+  pop.appendChild(label);
 
   const out = document.createElement("button");
   out.type = "button";
   out.className = "user-signout";
   out.textContent = "Sign out";
-  out.title = "Sign out of Yotpo Looks";
   out.addEventListener("click", signOut);
-  slot.appendChild(out);
+  pop.appendChild(out);
+  slot.appendChild(pop);
+
+  const setOpen = (open) => {
+    pop.hidden = !open;
+    btn.setAttribute("aria-expanded", open ? "true" : "false");
+    slot.classList.toggle("open", open);
+  };
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    setOpen(pop.hidden);
+  });
+  // Dismissal is on the document, not the bubble: a click anywhere else — the
+  // canvas iframe excepted, which swallows its own events — should close it.
+  document.addEventListener("click", (e) => {
+    if (!pop.hidden && !slot.contains(e.target)) setOpen(false);
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !pop.hidden) { setOpen(false); btn.focus(); }
+  });
+
   slot.hidden = false;
+}
+
+function initialEl(email) {
+  const span = document.createElement("span");
+  span.className = "user-initial";
+  span.textContent = (email.trim()[0] || "?").toUpperCase();
+  return span;
 }
 
 async function main() {
