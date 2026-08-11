@@ -156,13 +156,15 @@
     <form id="url-form" class="url-form">
       <input id="url-input" type="text" spellcheck="false" autocomplete="off"
              placeholder="Paste a product page URL, e.g. https://store.com/products/item">
-      <!-- OFF by default since the app went hosted (CLAUDE.md §3.1). Unticked,
-           the canvas iframe is sandboxed and the store's JavaScript genuinely
-           cannot run; ticked, it runs same-origin with a signed-in session,
-           which is a real trade the rep should make on purpose. Client-rendered
-           PDPs still need it — app.js warns on the way in. -->
-      <label class="scripts-toggle" title="Run the store's own JavaScript. Needed for client-rendered pages, but it then runs with the same access as this app — and the page may re-render over your edits. Leave off unless the page looks empty.">
-        <input id="keep-scripts" type="checkbox"> JS
+      <!-- ON by default (2026-08, user request), reversing the hosted default
+           of CLAUDE.md §3.1. Ticked, the store's JavaScript runs same-origin
+           with a signed-in session and the sandbox is off by spec — a real
+           trade, taken on purpose because client-rendered PDPs look empty
+           without it. Unticking it sandboxes the canvas so the page genuinely
+           cannot execute; that's the escape hatch when a hydration pass eats
+           inserted modules. app.js narrates both directions. -->
+      <label class="scripts-toggle" title="Run the store's own JavaScript. On by default so client-rendered pages fill in — but it then runs with the same access as this app, and the page may re-render over your edits. Untick it if modules vanish or the page looks unsafe.">
+        <input id="keep-scripts" type="checkbox" checked> JS
       </label>
       <button type="submit" id="load-btn">Load page</button>
     </form>

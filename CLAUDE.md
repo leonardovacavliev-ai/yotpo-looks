@@ -161,8 +161,10 @@ server-side with browser-like headers, rewrites the HTML, and serves it from
 The proxy removes all `<script>` tags unless `&scripts=1`. The **JS checkbox**
 in the top bar controls that flag and is **checked by default** (2026-08, user
 request: "make it so that the js toggle is pre-selected"), so the normal load is
-`scripts=1`. Both sides of the trade-off are real, which is why the switch
-exists at all:
+`scripts=1`. Hosting briefly reversed this — see §3.1 item 1 for why, and for
+why it was reversed back; the security machinery it describes is all still in
+place and still does its job on the unticked path. Both sides of the trade-off
+are real, which is why the switch exists at all:
 
 *Stripping* gives a stable canvas: hydration frameworks (React/Vue themes)
 re-render and would **wipe our inserted modules and hidden-section state** at
@@ -211,11 +213,17 @@ hiding, insertion and adaptation. The app *is* the same-origin trick.
 So the answer is to make the safe mode genuinely safe and the unsafe mode
 explicit:
 
-1. **The JS toggle now defaults OFF.** It was on by default locally (2026-08,
-   user request) because client-rendered PDPs look empty without it. Hosted,
-   default-on means every page load runs a third party's code next to a live
-   session. Flipping it is the one user-facing regression of the migration and
-   it is deliberate; the status line explains the trade on every switch-on.
+1. **The JS toggle defaults ON again** (2026-08, user request: "make the JS
+   toggle pre-selected when adding a URL to load"), reversing the hosted
+   default this section originally argued for. It was flipped OFF at migration
+   because default-on means **every** page load runs a third party's code next
+   to a live session, not just the loads a rep opted into; it was flipped back
+   because client-rendered PDPs look empty without it and unticking-then-
+   reloading on most demos was the bigger day-to-day cost. That trade is the
+   owner's call and it has been made — but it is a *decision*, not a default
+   nobody looked at, so do not quietly re-flip it in either direction. What
+   still holds the line: the sandbox below is real whenever the box is
+   unticked, and the status line explains the trade on every switch.
 2. **`sandbox="allow-same-origin"` with no `allow-scripts`** on the canvas
    iframe when JS is off. This is the enforcement — the browser guarantees what
    a regex only approximates, and it kills inline handlers, `javascript:` URLs
@@ -1652,14 +1660,18 @@ the original spec: saving/sharing configurations).
    the theme changed), meaningful Editor names, product page visible with
    images. (2026-08: their current theme detects as **9** top-level sections
    — verified identical under the pre-sub-section detection logic, so a count
-   near 9 is the site, not a regression; measured **11** with scripts off
-   after the JS default flipped, which is the same page, not a regression
-   either.) The **JS** box is now **unticked** by default (§3.1), so the canvas
-   URL ends `&scripts=0`, the iframe carries `sandbox="allow-same-origin"` and
-   the store's own scripts do not run at all. Tick JS and reload for the
-   faithful, script-heavy canvas — then the store logs its own errors
-   (Allbirds' cart drawer fails to fetch), theirs, not ours.
-2b. **The sandbox is a security claim, so test it as one** (§3.1). With JS off:
+   near 9 is the site, not a regression. It has also measured 11 with scripts
+   off on an earlier theme revision; 2026-08-11 it is **9 either way**, so the
+   count no longer distinguishes the two paths — check `scriptTags` and store
+   globals for that, per 2b.) The **JS** box is
+   **ticked** by default again (§3.1 item 1), so the canvas URL ends
+   `&scripts=1`, the frame's `sandbox` carries both tokens and is therefore
+   inert by spec, and the store runs its own code — expect its own console
+   errors (Allbirds' cart drawer fails to fetch cross-origin), theirs, not
+   ours. Untick JS and reload for the sandboxed canvas.
+2b. **The sandbox is a security claim, so test it as one** (§3.1). Untick JS
+   and reload first — this is no longer the default path, so it is the one
+   most likely to rot unnoticed. With JS off:
    ```js
    const cv = document.getElementById('canvas');
    cv.getAttribute('sandbox')                    // "allow-same-origin" — no allow-scripts
