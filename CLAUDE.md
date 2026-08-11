@@ -84,6 +84,36 @@ and are worth defending:
   bytes. Fix a rewrite bug once and both get it. Do not let these drift by
   "quickly" patching one side.
 
+### Shipping a change (read this before doing anything clever)
+
+**The live app is https://yotpo-looks-beta.vercel.app** and it redeploys itself
+from `main`. There is no deploy command, no CLI, no dashboard step:
+
+```bash
+git push        # ~60s later it is live
+```
+
+Vercel watches the GitHub repo (`leonardovacavliev-ai/yotpo-looks`) and rebuilds
+on every push to `main`. Push credentials are in the Mac's keychain, so this
+works unattended — **which also means a careless `git push` is a production
+deploy.** Work on a branch if a change is not ready to be seen by whoever is
+mid-demo.
+
+Two things that are *not* in the repo and therefore never change by pushing:
+
+- **Environment variables** (`SUPABASE_URL`, `SUPABASE_ANON_KEY`,
+  `ALLOWED_EMAIL_DOMAINS`, `ALLOWED_EMAILS`) live in the Vercel dashboard.
+  Editing one requires a **manual redeploy** — Vercel does not apply new values
+  to an existing deployment.
+- **The database schema.** `supabase/schema.sql` is a record of what was run,
+  not something that runs itself. Changing it means pasting the change into the
+  Supabase SQL editor by hand.
+
+The owner is **not technical**. Explain in plain language, one step at a time,
+and never hand over a wall of dashboard instructions — check what can be
+verified from here (`curl` the live `/api/config`, the GitHub API, a proxy
+fetch) before asking them to go and look at something.
+
 ### Environment constraints (important!)
 
 - **This machine has no Node.js, no npm, no Homebrew.** Only system Python
