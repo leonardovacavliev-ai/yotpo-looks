@@ -329,6 +329,31 @@
     </div>
   </div>
 
+  <!-- Analytics: usage numbers for the owner. The markup is here rather than
+       built in JS so it can be styled and inspected like the widget dialog,
+       but it stays empty until analytics.js fills #an-body — and the entry
+       point that opens it is only added to the account popover for an
+       analytics owner (boot.js). The real gate is in SQL: the RPC behind this
+       panel refuses anyone else (supabase/schema.sql §3). -->
+  <div id="analytics" class="an-overlay" hidden>
+    <div class="an-dialog" role="dialog" aria-modal="true" aria-labelledby="an-title">
+      <header class="an-head">
+        <h2 id="an-title">Analytics</h2>
+        <span class="an-stamp" id="an-stamp"></span>
+        <button id="an-refresh" class="head-btn" type="button" title="Re-query the numbers">Refresh</button>
+        <button id="an-close" class="icon-btn" type="button" title="Close">✕</button>
+      </header>
+
+      <div class="an-body" id="an-body"></div>
+
+      <footer class="an-foot">
+        <span class="an-foot-note">Stored in the database, not in the app — deploys do not reset it.</span>
+        <span class="wz-spacer"></span>
+        <button id="an-done" class="wz-btn-ghost" type="button">Close</button>
+      </footer>
+    </div>
+  </div>
+
   <!-- The app's only script tag. boot.js proves there is a signed-in, allowed
        user and *then* loads modules.js / custom-modules.js / imagery.js /
        app.js in that order — the list lives there now, including the

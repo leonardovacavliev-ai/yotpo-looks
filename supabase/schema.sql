@@ -127,14 +127,246 @@ create policy "widgets are private: delete" on public.widgets
   using (user_id = auth.uid() and public.email_allowed());
 
 -- ---------------------------------------------------------------------------
--- 3. Sanity checks — run these after the script and read the output
+-- 3. Analytics
 -- ---------------------------------------------------------------------------
--- Expect rls_enabled = true on both tables, and 4 policies on widgets.
+-- Usage numbers for the owner, and nobody else. Two properties shape all of it:
+--
+--   * **It lives here, in Postgres.** That is the whole reason this section
+--     exists rather than a counter in the app: Vercel functions are stateless
+--     and rebuilt on every push, so anything held in a process (or in a
+--     browser's localStorage) restarts at zero the next time the app deploys.
+--     A table does not.
+--
+--   * **The admin check is in SQL, not in the client.** analytics.js hides the
+--     menu item for everyone else, but that is cosmetics — hand-crafting the
+--     RPC call is trivial. is_analytics_admin() below is the actual boundary,
+--     and it runs inside the SECURITY DEFINER function that does the reading.
+
+-- Who may see the numbers. Deliberately a table rather than a hardcoded list:
+-- adding a second owner later is one INSERT, not a deploy.
+create table if not exists public.analytics_admins (
+  email       text primary key,
+  note        text,
+  created_at  timestamptz not null default now()
+);
+
+insert into public.analytics_admins (email, note) values
+  ('lvacavliev@gmail.com',           'owner'),
+  ('leonardo.vacavliev@yotpo.com',   'owner, work account')
+on conflict (email) do nothing;
+
+-- Same treatment as allowlist: RLS on, no policies, so no client query can
+-- read it. Only the SECURITY DEFINER function below sees inside.
+alter table public.analytics_admins enable row level security;
+
+create or replace function public.is_analytics_admin()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.analytics_admins a
+    where lower(a.email) = lower(auth.jwt() ->> 'email')
+  );
+$$;
+
+comment on function public.is_analytics_admin() is
+  'True when the caller''s JWT email is an analytics owner. The real access gate.';
+
+-- ---------------------------------------------------------------------------
+-- Sessions.
+--
+-- auth.sessions would look like the obvious source and is a trap: Supabase
+-- deletes those rows on sign-out and prunes them when they expire, so it
+-- answers "how many sessions are open right now", never "how many there have
+-- ever been". This table is append-only and keeps the history.
+--
+-- user_id is nullable with ON DELETE SET NULL, not CASCADE, so deleting an
+-- account does not retroactively erase the sessions it had. The count is a
+-- record of use, and use happened.
+create table if not exists public.app_sessions (
+  id          uuid primary key default gen_random_uuid(),
+  user_id     uuid default auth.uid() references auth.users (id) on delete set null,
+  started_at  timestamptz not null default now(),
+  user_agent  text
+);
+
+create index if not exists app_sessions_user_started_idx
+  on public.app_sessions (user_id, started_at desc);
+create index if not exists app_sessions_started_idx
+  on public.app_sessions (started_at desc);
+
+alter table public.app_sessions enable row level security;
+
+-- Insert and select only, and only your own rows. There is deliberately no
+-- update or delete policy: a client can add to its own history and read it
+-- back, and can never edit or erase it.
+drop policy if exists "sessions: insert own" on public.app_sessions;
+create policy "sessions: insert own" on public.app_sessions
+  for insert to authenticated
+  with check (user_id = auth.uid() and public.email_allowed());
+
+drop policy if exists "sessions: select own" on public.app_sessions;
+create policy "sessions: select own" on public.app_sessions
+  for select to authenticated
+  using (user_id = auth.uid());
+
+-- Called once per app boot (boot.js). SECURITY INVOKER on purpose — it writes
+-- as the caller, so the policies above are what allow the row, and a bug here
+-- cannot write a row for somebody else.
+--
+-- The 30-minute window is what makes a "session" mean something: a reload, a
+-- second tab, or a mid-demo refresh is the same sitting, and counting each one
+-- would turn the metric into a page-view count.
+create or replace function public.record_session(p_user_agent text default null)
+returns void
+language plpgsql
+security invoker
+set search_path = public
+as $$
+begin
+  if auth.uid() is null then
+    return;
+  end if;
+  if exists (
+    select 1 from public.app_sessions
+    where user_id = auth.uid()
+      and started_at > now() - interval '30 minutes'
+  ) then
+    return;
+  end if;
+  insert into public.app_sessions (user_id, user_agent)
+  values (auth.uid(), left(coalesce(p_user_agent, ''), 300));
+end;
+$$;
+
+comment on function public.record_session(text) is
+  'Records one app session for the caller, de-duplicated to one per 30 minutes.';
+
+-- ---------------------------------------------------------------------------
+-- The numbers themselves. One round trip, one JSON object.
+--
+-- SECURITY DEFINER because it reads auth.users, which no ordinary client role
+-- can see — which is exactly why the first thing it does is check who is
+-- asking. Active-user counts come from auth.users.last_sign_in_at rather than
+-- from app_sessions, because that column was already being maintained before
+-- this table existed: the windows are correct from day one instead of from the
+-- day analytics shipped.
+create or replace function public.analytics_overview()
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  accounts        bigint;
+  galleries       bigint;
+  reviews_total   bigint;
+  loyalty_total   bigint;
+begin
+  if not public.is_analytics_admin() then
+    raise exception 'analytics are restricted' using errcode = '42501';
+  end if;
+
+  select count(*) into accounts from auth.users;
+
+  select count(distinct user_id) into galleries from public.widgets;
+
+  select
+    count(*) filter (where product = 'reviews'),
+    count(*) filter (where product = 'loyalty')
+  into reviews_total, loyalty_total
+  from public.widgets;
+
+  return jsonb_build_object(
+    'generated_at', now(),
+
+    'accounts', jsonb_build_object(
+      'total',    accounts,
+      'new_7d',   (select count(*) from auth.users where created_at > now() - interval '7 days'),
+      'new_30d',  (select count(*) from auth.users where created_at > now() - interval '30 days'),
+      'first_at', (select min(created_at) from auth.users)
+    ),
+
+    -- "at least one login in the window" — last_sign_in_at is the most recent
+    -- one, so a user inside the window logged in at least once inside it.
+    'active', jsonb_build_object(
+      'h24', (select count(*) from auth.users where last_sign_in_at > now() - interval '24 hours'),
+      'd7',  (select count(*) from auth.users where last_sign_in_at > now() - interval '7 days'),
+      'd30', (select count(*) from auth.users where last_sign_in_at > now() - interval '30 days'),
+      'd90', (select count(*) from auth.users where last_sign_in_at > now() - interval '90 days')
+    ),
+
+    'sessions', jsonb_build_object(
+      'total', (select count(*) from public.app_sessions),
+      -- Reported so the total is honest about its own start date: sessions are
+      -- only counted from the day this table was created.
+      'since', (select min(started_at) from public.app_sessions),
+      'h24',   (select count(*) from public.app_sessions where started_at > now() - interval '24 hours'),
+      'd7',    (select count(*) from public.app_sessions where started_at > now() - interval '7 days'),
+      'd30',   (select count(*) from public.app_sessions where started_at > now() - interval '30 days'),
+      'd90',   (select count(*) from public.app_sessions where started_at > now() - interval '90 days')
+    ),
+
+    -- Two denominators, because they answer different questions and the gap
+    -- between them is itself the interesting number: "per account" includes
+    -- everyone who signed in and never built anything, "per gallery" counts
+    -- only accounts that hold at least one widget.
+    'widgets', jsonb_build_object(
+      'total',               reviews_total + loyalty_total,
+      'reviews',             reviews_total,
+      'loyalty',             loyalty_total,
+      'galleries',           galleries,
+      'avg_reviews_account', round(reviews_total::numeric / nullif(accounts, 0), 2),
+      'avg_loyalty_account', round(loyalty_total::numeric / nullif(accounts, 0), 2),
+      'avg_reviews_gallery', round(reviews_total::numeric / nullif(galleries, 0), 2),
+      'avg_loyalty_gallery', round(loyalty_total::numeric / nullif(galleries, 0), 2)
+    )
+  );
+end;
+$$;
+
+comment on function public.analytics_overview() is
+  'Usage overview as JSON, for analytics admins only. Raises 42501 otherwise.';
+
+-- CREATE FUNCTION grants EXECUTE to PUBLIC by default, which for a SECURITY
+-- DEFINER function is worth undoing explicitly even though it checks its own
+-- caller: a signed-out visitor has no business reaching either of these.
+revoke all on function public.is_analytics_admin()   from public, anon;
+revoke all on function public.analytics_overview()   from public, anon;
+revoke all on function public.record_session(text)   from public, anon;
+grant execute on function public.is_analytics_admin() to authenticated;
+grant execute on function public.analytics_overview() to authenticated;
+grant execute on function public.record_session(text) to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- 4. Sanity checks — run these after the script and read the output
+-- ---------------------------------------------------------------------------
+-- Expect rls_enabled = true on all four tables, 4 policies on widgets and
+-- 2 on app_sessions.
 select relname as table_name, relrowsecurity as rls_enabled
 from pg_class
-where relname in ('widgets', 'allowlist');
+where relname in ('widgets', 'allowlist', 'app_sessions', 'analytics_admins');
 
 select tablename, policyname, cmd
 from pg_policies
 where schemaname = 'public'
 order by tablename, policyname;
+
+-- Expect true when signed in as an owner, false for anyone else. Run from the
+-- SQL editor it returns false — there is no JWT there, which is the correct
+-- answer and not a broken install.
+select public.is_analytics_admin() as am_i_an_analytics_admin;
+
+-- The SQL editor shows only the LAST statement's result, so this one is last
+-- on purpose: it is the line the owner actually reads to know the run worked.
+-- Keep it at the bottom of the file.
+select
+  (select count(*) from public.analytics_admins) as analytics_owners,
+  (select count(*) from public.widgets)          as widgets_stored,
+  (select count(*) from public.app_sessions)     as sessions_recorded,
+  'Done — everything installed. Open the app and check your account menu.' as status;

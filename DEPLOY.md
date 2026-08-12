@@ -62,10 +62,22 @@ Your project already exists: ref `awfqeamcxseqrkwvbzip`.
 1. **SQL Editor** → New query → paste the whole of
    [`supabase/schema.sql`](supabase/schema.sql) → **Run**.
    It prints two result tables at the end. Check them:
-   `rls_enabled` must be **true** for both `widgets` and `allowlist`, and
-   `widgets` must have **4 policies**. If row-level security is off, stop and
+   `rls_enabled` must be **true** for all four of `widgets`, `allowlist`,
+   `app_sessions` and `analytics_admins`; `widgets` must have **4 policies**
+   and `app_sessions` **2**. If row-level security is off, stop and
    fix it — it is the only thing keeping one rep's gallery private from
    another's.
+
+   **If you have run this file before, run it again.** It is written to be
+   safe to re-run, and everything under "3. Analytics" in it — the usage
+   numbers behind the Analytics item in your account menu — is only created by
+   running it. Pushing code does not create database tables. Until you do this,
+   the app works exactly as before and the Analytics item simply does not
+   appear.
+
+   PostgREST caches the list of functions for a few seconds after a change. If
+   the Analytics popup says the tables are not installed right after you ran
+   this, wait half a minute and reopen it before assuming something failed.
 2. **Project settings → Data API** → copy the **Project URL**.
 3. **Project settings → API keys** → copy the **anon / public** key.
    Do *not* copy `service_role`. That key bypasses row-level security entirely
@@ -146,6 +158,27 @@ the login page needs to know the rules *before* a session exists.
 Miss the first and they can sign in but the canvas will not load pages. Miss
 the second and they can sign in but their gallery will not save. The database
 one is the real security boundary; the environment one is abuse control.
+
+### Letting someone else see the Analytics numbers
+
+That is a *separate* list, and unlike the allowlist it lives in one place only
+— nothing needs to know it before a session exists. One line in the Supabase
+SQL Editor, no redeploy:
+
+```sql
+insert into public.analytics_admins (email, note)
+values ('someone@yotpo.com', 'why they need the numbers');
+```
+
+They will see the Analytics item in their account menu the next time they load
+the app. To take it away again:
+
+```sql
+delete from public.analytics_admins where email = 'someone@yotpo.com';
+```
+
+Being on this list does **not** let anyone see another person's widgets — the
+analytics are counts and averages, never gallery contents.
 
 ---
 

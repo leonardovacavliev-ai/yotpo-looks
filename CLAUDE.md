@@ -48,6 +48,11 @@ automatically detects its sections ("modules"), and lets the rep:
 
 The success bar: URL → convincing, native-looking demo in under 5 minutes.
 
+One thing in the app is not for the rep at all: **Analytics** (§5.14), an
+owner-only popup reached from the account popover, reporting accounts, active
+users, sessions and gallery averages. Everything it shows is computed in
+Postgres, which is what makes the numbers survive a deploy.
+
 Primary use cases:
 - **Competitive replacement** — hide the competitor's review module, drop ours
   in the same slot, show the client "this is what switching looks like".
@@ -267,7 +272,10 @@ api/
                           because a no-build-step site can't read them any other way
 vercel.json               Static root = public/, /proxy -> /api/proxy, no build
 supabase/
-  schema.sql              widgets + allowlist tables, RLS policies, email_allowed()
+  schema.sql              widgets + allowlist tables, RLS policies, email_allowed(),
+                          and §3 of it the analytics tables and functions —
+                          app_sessions, analytics_admins, analytics_overview()
+                          (§5.14). Idempotent: re-run the whole file after an edit
 DEPLOY.md                 GitHub -> Vercel -> Supabase -> Google OAuth setup
 .env.local.example        Template for local Supabase settings (.env.local is
                           gitignored; without one the app runs as it always did)
@@ -287,6 +295,10 @@ public/
   store.js                (module) The widget gallery's CRUD against Supabase,
                           plus the one-time lift of a pre-hosting localStorage
                           library into the account
+  analytics.js            (module) Owner-only usage numbers (§5.14): the admin
+                          check, the once-per-sitting session record, and the
+                          popup that renders analytics_overview(). Imported by
+                          boot.js, never by the app's classic scripts
   app.css                 App chrome styling (dark theme) — NOT module styling
   modules.js              Module base CSS (the --dmb-* variable defaults and
                           shared dmbm- classes) + the widget registry
@@ -1627,6 +1639,98 @@ clamp can truncate — acceptable only because the status narrates something the
 user just did rather than being the sole copy of it. If a message *needs* to
 survive in full, it does not belong here.
 
+### 5.14 Analytics — the owner's numbers
+
+An owner-only popup, opened from the account popover (§5.13), reporting four
+things: accounts created, active users over 24h/7d/30d/90d, total sessions, and
+average Reviews/Loyalty widgets per gallery. `public/analytics.js` (an ES
+module, imported by boot.js) plus §3 of `supabase/schema.sql`. The app's four
+classic scripts never learn it exists.
+
+**Everything is computed in Postgres, and that is the requirement, not a
+preference** (2026-08, user request: "make sure the analytics don't reset every
+time there is a new deployment"). Vercel functions are stateless and rebuilt on
+every push, so any counter held in a process — or in a browser's localStorage,
+which is per-device rather than per-deploy but resets just as surely — starts at
+zero the next time someone pushes to `main`. A table does not. This is why
+`analytics_overview()` returns one JSON object rather than the app fetching rows
+and doing arithmetic: the browser cannot see `auth.users` at all, and the parts
+it *could* count are the parts that must not live in the browser.
+
+**The gate is SQL, and the hidden menu item is not it.** `analytics.js` only
+adds the popover row when `is_analytics_admin()` says so, but hiding a button
+stops nobody who can open a console — `analytics_overview()` therefore checks
+the caller's own JWT email and raises `42501` for anyone else. Same shape as the
+allowlist (§5.13): the client-side copy exists to shape the UI, the SQL copy is
+the boundary. Unlike the allowlist, though, there is exactly **one** copy of the
+owner list — the `analytics_admins` table — because nothing here has to work
+before a session exists. Adding an owner is an INSERT, not a deploy.
+
+Where each number comes from, and why:
+
+- **Accounts** — `count(*) from auth.users`. Reachable only because the function
+  is SECURITY DEFINER; no client role can read that table, which is the point.
+- **Active users** — `auth.users.last_sign_in_at` inside each window. That
+  column answers "at least one login in the window" exactly (it is the *most
+  recent* login, so a user inside the window logged in at least once inside it),
+  and it has been maintained since the app went hosted — so the four windows are
+  correct from day one instead of from the day analytics shipped. Deriving them
+  from `app_sessions` instead would have been retroactively empty.
+- **Sessions** — `public.app_sessions`, our own append-only table. `auth.sessions`
+  looks like the obvious source and is a trap: Supabase deletes those rows on
+  sign-out and prunes them at expiry, so it can only ever answer "how many are
+  open right now". Because our table starts when it was created, the card
+  reports its own `since` date rather than implying the total covers all time.
+- **Gallery averages** — `public.widgets` grouped by `product`, over two
+  denominators. "Per gallery" divides by accounts holding ≥1 widget; "per
+  account" divides by every account. Both are shown because the gap between them
+  *is* the interesting number — it is how many people signed in and never built
+  anything.
+
+Design points that are load-bearing:
+
+- **A session is a sitting, not a page view.** `record_session()` inserts at most
+  one row per user per 30 minutes, and the de-duplication is in the SQL function
+  rather than the client so a reload, a second tab and a mid-demo refresh all
+  collapse into one. boot.js calls it un-awaited on every boot: it must never
+  delay the app, and a lost row is a lost data point, not a broken demo.
+- **`app_sessions` is append-only from the client's side.** Insert and select
+  policies, deliberately no update or delete — a user can add to their own
+  history and read it back, and can never edit or erase it. `user_id` is
+  nullable with `ON DELETE SET NULL` rather than `CASCADE`, so deleting an
+  account does not retroactively erase the sessions it had; the count is a
+  record of use, and use happened.
+- **`record_session()` is SECURITY INVOKER, `analytics_overview()` is DEFINER.**
+  The first writes as the caller, so those policies are what allow the row and a
+  bug in it cannot write a row for somebody else. The second has to be DEFINER
+  to read `auth.users` at all, which is exactly why the first thing it does is
+  check who is asking. Don't merge them.
+- **Boot-time calls swallow their errors; the dialog does not.** A schema that
+  has not been re-run yet must not stop the app loading for anyone, so
+  `isAnalyticsAdmin` and `recordSession` log and move on. The popup, which you
+  only open on purpose, maps `42501` and `PGRST202`/`42883` to sentences that
+  say what to do — the second one names `supabase/schema.sql`, because "the
+  analytics tables are not installed yet" is the single most likely thing to be
+  wrong and the owner is not technical (§2).
+- **The popup re-queries on every open** rather than caching. The reason to open
+  it is to see the current numbers, and one RPC is cheaper than the confusion of
+  a stale panel.
+- **The popover row sits above Sign out**, which stays the last thing in the
+  bubble where it has always been, so the new row cannot be hit by muscle memory
+  aiming for it. Opening the popup closes the popover — at `z-index` 40 it would
+  otherwise sit on top of the dialog's 50.
+
+`window.DMB_ANALYTICS` (`isAdmin` / `overview` / `open` / `record`) is the debug
+surface, in the spirit of §5.7: "the Analytics row is missing" is almost always
+the admin check answering false, and neither that answer nor the raw numbers are
+reachable from the UI when the row you would click is the thing that is absent.
+
+Note the deployment consequence, which is the one way to ship this half-done:
+**pushing the code does not create the tables.** `supabase/schema.sql` is a
+record of what was run (§2), so the SQL has to be pasted into the Supabase SQL
+editor by hand. Until it is, the app runs exactly as before and the popover has
+no Analytics row.
+
 ---
 
 ---
@@ -2154,6 +2258,43 @@ the original spec: saving/sharing configurations).
      restart) and save a widget: the status line must say it is in this session
      only. Silence here is the bug — the widget looks saved either way (§5.13).
 
+5i. **Analytics** (§5.14). Needs a `.env.local` *and* `supabase/schema.sql` re-run
+   — the code alone creates nothing, so a missing-table error here is the
+   expected first result, not a regression.
+   - **The row is owner-only, and the RPC is the check.** Signed in as an owner,
+     the account popover shows Analytics above Sign out; signed in as anyone
+     else it does not. Then prove the hidden button is not what is protecting
+     anything — from a **non-owner's** console:
+     ```js
+     await DMB_ANALYTICS.isAdmin()     // false
+     await DMB_ANALYTICS.overview()    // throws "not an analytics owner", no data
+     ```
+     A non-owner who gets numbers back means the SQL check is gone, whatever the
+     menu looks like.
+   - **The popup renders and dismisses.** `DMB_ANALYTICS.open()` → four cards
+     (Accounts / Active users / Sessions / Widgets per gallery). Escape, the ✕,
+     the Close button and a click on the backdrop each dismiss it; a mousedown
+     that *starts inside* the dialog must not (the numbers are selectable text
+     and a drag-select ending on the backdrop should not close the panel).
+   - **Sessions de-duplicate, and that is the metric's whole meaning.** Note the
+     total, reload the app three times, reopen: unchanged. Then
+     `delete from public.app_sessions where user_id = auth.uid()` in the SQL
+     editor, reload, and it goes up by exactly one.
+   - **The averages match the galleries.** Add a widget, reopen the popup:
+     Reviews (or Loyalty) total goes up by one and the per-gallery average moves.
+     A first widget on a previously empty account also moves "Galleries with a
+     widget".
+   - **It survives a deploy — the thing that was asked for.** Note the session
+     total, push a trivial change to `main`, wait for Vercel, reopen: same
+     number, plus whatever real use happened in between. This is the check that
+     matters most; everything above can be right while the numbers still live
+     somewhere that resets.
+   - **The error paths say what to do.** Against a project where the schema has
+     not been run, the popup must name `supabase/schema.sql` rather than showing
+     a Postgres error code. Both of the boot-time calls must stay silent
+     failures — with the tables missing, the app still loads and the gallery
+     still works.
+
 6. Proxy smoke test without a browser:
    ```bash
    curl -s -o /dev/null -w "%{http_code}\n" "http://localhost:4173/proxy?url=https%3A%2F%2Fwww.allbirds.com%2Fproducts%2Fmens-tree-runner-go&scripts=0"
@@ -2536,6 +2677,16 @@ via JS instead (don't chase this as a bug, it's an automation artifact).
   duration and response size (4.5 MB), which a very large store page could
   brush against; the proxy's own timeout is set below that ceiling. None of
   these bite at the scale of a sales team, all of them bite eventually.
+- **Analytics only counts sessions from the day the table was created** (§5.14).
+  There is no way to reconstruct the history: `auth.sessions` had already pruned
+  it, and nothing else was recording. The card reports its own `since` date
+  rather than implying the total covers all time. The account and active-user
+  numbers have no such gap — those come from `auth.users`, which was always
+  there. Two smaller accepted edges: an account deleted from Supabase drops out
+  of the account and active counts (its sessions survive, unattributed), and
+  "active" means *signed in*, not *did anything* — a rep who opens the app and
+  closes it counts. Measuring real activity would mean event tracking, which is
+  a much larger thing than four numbers and was not asked for.
 - **Client-rendered SPAs** show sparse content with scripts stripped; the JS
   checkbox is the escape hatch, with the documented risk that hydration may
   wipe edits.

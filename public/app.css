@@ -853,3 +853,165 @@ body.booting .layout { visibility: hidden; }
 .wz-btn-ghost.wz-danger { color: var(--danger); }
 .wz-btn-ghost.wz-danger:hover { border-color: var(--danger); }
 .wz-btn-ghost[hidden] { display: none; }
+
+/* ---------- Analytics ----------
+   Same overlay shape as the widget editor (and the same z-index band), because
+   it is the same kind of thing: a modal you open deliberately, read, and
+   dismiss. It is narrower — four cards of figures, not an editor — and the
+   grid is fixed at two columns rather than auto-fitting, so the pairs that
+   belong together (Accounts/Active, Sessions/Widgets) stay side by side
+   instead of re-flowing into a column at an arbitrary width. */
+.an-overlay[hidden] { display: none; }   /* author display must not beat [hidden] */
+
+.an-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(6, 8, 13, .72);
+  padding: 24px;
+}
+
+.an-dialog {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, .55);
+  width: min(760px, 100%);
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.an-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 13px 14px;
+  border-bottom: 1px solid var(--line);
+}
+.an-head h2 { margin: 0; font-size: 13px; text-transform: uppercase; letter-spacing: 1px; }
+/* Takes the slack so Refresh and ✕ sit hard right whatever the timestamp says. */
+.an-stamp { flex: 1; color: var(--muted); font-size: 11.5px; }
+
+.an-body {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  padding: 14px;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.an-card {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-2);
+  padding: 12px 13px 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.an-card-title {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .8px;
+  color: var(--muted);
+}
+
+/* One or two headline figures per card. `baseline` so a two-figure card
+   (Reviews avg. / Loyalty avg.) lines its numbers up with each other rather
+   than with the taller of the two labels. */
+.an-figs { display: flex; gap: 22px; align-items: baseline; flex-wrap: wrap; }
+.an-fig { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.an-fig-num {
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.an-fig-label { font-size: 11.5px; color: var(--muted); }
+
+/* Label/value pairs. A two-column grid rather than a flex row per pair, so
+   every value in a card starts at the same x — the columns are what make four
+   counts scannable as a series instead of four separate sentences. */
+.an-rows {
+  margin: 0;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 5px 12px;
+  font-size: 12px;
+}
+.an-rows dt { color: var(--muted); min-width: 0; }
+.an-rows dd {
+  margin: 0;
+  text-align: right;
+  color: var(--text);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.an-row-hint { color: var(--muted); font-weight: 400; }
+
+.an-note {
+  margin: 0;
+  padding-top: 2px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--muted);
+  border-top: 1px solid var(--line);
+}
+/* The note is the last thing in a card and cards in a row stretch to match
+   heights, so pin it to the bottom: otherwise a short note floats mid-card
+   next to a taller neighbour. */
+.an-card .an-note { margin-top: auto; }
+
+/* Loading and error both land here. Spans the grid so the message is centered
+   in the dialog rather than sitting in the first column. */
+.an-state {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 26px 14px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+.an-state-err {
+  color: var(--danger-ink);
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--danger) 38%, transparent);
+  border-radius: 8px;
+  text-align: left;
+  line-height: 1.5;
+}
+
+.an-foot {
+  display: flex; align-items: center; gap: 8px;
+  padding: 11px 14px;
+  border-top: 1px solid var(--line);
+}
+.an-foot-note { color: var(--muted); font-size: 11px; }
+
+/* The account popover's entry point. Styled as a row, not a button-looking
+   button: it sits above Sign out, which is the popover's primary action and
+   should stay the only thing in there with a border. */
+.user-chip .user-analytics {
+  all: unset;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  padding: 6px 10px;
+  border-radius: 7px;
+  text-align: center;
+  background: var(--panel-2);
+}
+.user-chip .user-analytics:hover { background: var(--line); }
+.user-chip .user-analytics:focus-visible { box-shadow: 0 0 0 2px var(--accent); }

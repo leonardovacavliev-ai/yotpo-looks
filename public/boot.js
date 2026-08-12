@@ -15,6 +15,7 @@
  */
 import { requireSession, signOut, getConfig } from "./auth.js";
 import { listWidgets, saveWidget, deleteWidget, migrateLocalWidgets } from "./store.js";
+import { isAnalyticsAdmin, recordSession, openAnalytics, fetchOverview } from "./analytics.js";
 
 /* Load order matters and mirrors what index.html used to declare inline.
    To restore the eleven sample widgets (CLAUDE.md §5.4), uncomment the second
@@ -126,7 +127,30 @@ function mountUserChip(user) {
     if (e.key === "Escape" && !pop.hidden) { setOpen(false); btn.focus(); }
   });
 
+  /* Analytics is an owner-only entry, and whether this account is an owner is
+     a question for the database (analytics.js). That answer arrives after the
+     popover has been built, so the entry is added later rather than the whole
+     chip waiting on a round trip it usually does not need — which is why this
+     is a returned function and not a branch above.
+
+     Inserted *above* Sign out: sign-out stays the last thing in the bubble,
+     where it has always been, so the new row cannot be hit by muscle memory
+     aiming for it. */
+  const addAnalytics = (onOpen) => {
+    if (pop.querySelector(".user-analytics")) return;
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = "user-analytics";
+    item.textContent = "Analytics";
+    item.addEventListener("click", () => {
+      setOpen(false);   // the popover would otherwise sit on top of the dialog
+      onOpen();
+    });
+    pop.insertBefore(item, out);
+  };
+
   slot.hidden = false;
+  return { addAnalytics };
 }
 
 function initialEl(email) {
@@ -171,7 +195,30 @@ async function main() {
   window.DMB_USER = user;
   window.DMB_SIGNOUT = signOut;
 
-  mountUserChip(user);
+  const chip = mountUserChip(user);
+
+  /* Both of these are deliberately un-awaited: they run alongside the app's
+     scripts loading, and neither is allowed to hold up a demo. recordSession
+     de-duplicates server-side, so calling it on every boot (including a
+     reload) is correct; isAnalyticsAdmin decides whether the popover gets its
+     Analytics row, and answering "no" — including by failing — simply leaves
+     the popover as it was. */
+  recordSession(client);
+  isAnalyticsAdmin(client).then((admin) => {
+    if (admin && chip) chip.addAnalytics(() => openAnalytics(client));
+  });
+
+  /* Debug surface, in the spirit of window.DMB (CLAUDE.md §5.7): "the
+     Analytics row is missing" is almost always the admin check answering
+     false, and neither that answer nor the raw numbers are reachable from the
+     UI when the row you would click is the thing that is absent. */
+  window.DMB_ANALYTICS = {
+    isAdmin: () => isAnalyticsAdmin(client),
+    overview: () => fetchOverview(client),
+    open: () => openAnalytics(client),
+    record: () => recordSession(client),
+  };
+
   shroud("Loading your gallery…");
 
   for (const src of APP_SCRIPTS) await loadScript(src);
