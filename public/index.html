@@ -214,6 +214,22 @@
       <div id="viewport" class="viewport">
         <iframe id="canvas" title="Loaded product page"></iframe>
       </div>
+      <!-- Pop-out (CLAUDE.md §5.15). Sits over the canvas rather than in the
+           topbar because it belongs to the browser, not to the app chrome —
+           and because the placeholder it reveals replaces this same pane. -->
+      <button id="popout-btn" class="popout-btn" type="button"
+              title="Open the browser in its own window — then share only that window on a call">⧉ Pop out</button>
+      <!-- Shown in place of the canvas while the browser lives in its own
+           window. The pane keeps its size, so the app's layout never moves. -->
+      <div id="browser-popped" class="browser-popped" hidden>
+        <div class="browser-empty-inner">
+          <h1>The browser is in its own window</h1>
+          <p>Share that window on your call and keep this one behind the scenes.
+             Everything still works from here — hide sections in the Editor, and
+             drag widgets from the Gallery onto an Editor row to insert them.</p>
+          <button id="popin-btn" class="popin-btn" type="button">Bring the browser back</button>
+        </div>
+      </div>
     </section>
 
     <aside class="panel gallery-panel">

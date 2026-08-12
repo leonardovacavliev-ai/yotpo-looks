@@ -18,15 +18,19 @@ automatically detects its sections ("modules"), and lets the rep:
    can be hidden (and dropped between) individually.
 2. **Drag & drop** our own demo modules (reviews, trust badges, testimonials…)
    from a gallery into any position on the page — including between
-   sub-sections inside an expanded section.
+   sub-sections inside an expanded section. The **Editor list is a second drop
+   target** for the same gesture, and inserted widgets **drag up and down that
+   list** to be re-ordered; both are §5.5.
 3. Watch the dropped module **automatically inherit the host site's styling**
    (font, text color, accent/button color, corner radius) so it looks native.
 4. **Revert** a module to its default styling if the inherited CSS clashes.
 5. Recolor a module's **background** — deliberately the *only* other
    customization, to keep live demos fast and un-fiddly.
 6. Switch the canvas between **Desktop and Mobile viewports** (top bar
-   toggle), and **collapse the Gallery** (arrow in its header) for more
-   canvas real estate.
+   toggle), **collapse the Gallery** (arrow in its header) for more canvas
+   real estate, and **pop the browser into its own window** (⧉ at the top
+   right of the canvas) so a call can be shown the client's page and nothing
+   else (§5.15).
 7. **Add their own widgets** to the gallery, which ships **empty** — ＋ in the
    Gallery header opens a paste-HTML/CSS editor with live preview and
    validation (stored in the browser), or drop a `registerModule()` call into
@@ -281,7 +285,8 @@ DEPLOY.md                 GitHub -> Vercel -> Supabase -> Google OAuth setup
                           gitignored; without one the app runs as it always did)
 public/
   index.html              Three-panel shell: Editor | Browser | Gallery
-                          + the widget-editor dialog markup. Loads exactly one
+                          + the widget-editor dialog markup + the pop-out
+                          button and its placeholder (§5.15). Loads exactly one
                           script (boot.js) — the app's own four are loaded from
                           there, after the session check
   login.html              The only page a signed-out visitor can reach. Google
@@ -676,14 +681,56 @@ filtered out defensively.
   longer renders, so it can't be hovered) — that's by design, don't add
   placeholder ghosts to the page. The header count shows top-level sections
   only (`!s.parent`).
-- Demo rows: highlighted indigo, `demo` badge, color swatch (mirrors the chip
-  input via `setModuleBg` updating both), ✦ adapt / ↺ revert toggle, ✕ remove —
-  and, on widgets whose import found blendable frozen surfaces
-  (`def.flattenable`), a ▧/▩ Blend toggle (§5.9).
+- Demo rows: a **pale indigo backdrop plus a solid left stripe**, ⠿ grab
+  handle, `demo` badge, color swatch (mirrors the chip input via `setModuleBg`
+  updating both), ✦ adapt / ↺ revert toggle, ✕ remove — and, on widgets whose
+  import found blendable frozen surfaces (`def.flattenable`), a ▧/▩ Blend
+  toggle (§5.9). The tint is `--demo` (`#6366f1`, app.css), the same indigo as
+  the in-page hover outline and drop indicator, so "a thing I inserted" reads
+  the same everywhere. It is a literal rather than a token because the
+  Tailwind token set's `--primary` is achromatic — the row used to be washed
+  with it and came out grey among grey. The stripe is an `inset` box-shadow,
+  not a border, so it survives `.sub-row`'s own left border.
 - Clicking any visible row scrolls the canvas to the element and flashes an
   amber outline (`flash()` — also used after insert as drop feedback).
 - Row action buttons call `e.stopPropagation()` so they don't also trigger
   the row's scroll-to.
+
+**The list is a drop target, and demo rows are drag sources.** Two gestures,
+one implementation, because they differ only in the last line: a gallery card
+dropped on the Editor inserts a widget, and a demo row dragged within it
+re-anchors one. `applyDrop()` is the join — both the page and the Editor hand
+it the same `"dmb:<widget id>"` / `"dmb-move:<demo id>"` text and a placement,
+so neither target knows which gesture it served. Design points:
+
+- **A gap points at the row *below* it** — insert *before* that row's element.
+  "After the row above" looks identical on screen and is wrong: after a
+  container means after everything the container holds, so every drop into an
+  expanded section would silently jump out of it. The one exception is the gap
+  past the last row, the only one that cannot be phrased as "before
+  something".
+- `insertModule`'s point grew a second shape. `{ref, where}` is what a drop
+  knows (a sibling to land beside); `{parent, before}` is what a *replay*
+  knows (§5.15), and `placeModule()` accepts either. `moveModule()` is then
+  just `placeModule` + re-render: everything an instance carries — adapt
+  state, background, blend, imagery swaps — lives on the node, and the Editor
+  sorts each level by live document position, so the row follows on its own.
+- **`dragPayload` mirrors the DataTransfer** because `dragover` may read
+  `dataTransfer.types` and never the data itself (HTML5 spec), yet the cursor
+  has to say copy vs move. The drag always starts in this window, so a plain
+  variable is honest; `drop` still reads the real DataTransfer. It doubles as
+  the "is this even our drag" test, which is what stops a stray text or file
+  drag drawing a drop line that means nothing.
+- The drop line is **absolutely positioned** in the list (hence
+  `.editor-list { position: relative }`), not inserted into the row flow — an
+  inserted element would shift every gap it is trying to point at. It is
+  re-appended on each show because `renderEditor()` clears the list.
+- The row is `draggable`, so a mousedown on the color swatch or an action
+  button would start a drag instead of working the control — the same trap the
+  gallery cards hit, fixed the same way (`dragBlocked`, checked in
+  `dragstart`).
+- Dragging a row **into the page** works too and moves rather than duplicates;
+  it falls out of `applyDrop` for free and costs nothing to keep.
 
 ### 5.6 Viewport emulation & gallery collapse
 
@@ -738,6 +785,14 @@ and rescales automatically. The Editor panel intentionally has no collapse
 window.DMB = {
   state, insertModule, setSectionHidden, toggleAdapt, toggleExpand,
   setModuleBg, toggleFlat, loadPage, layoutViewport, redetectSections,
+  // Editor re-ordering (§5.5) — same point shapes insertModule takes, so a
+  // drag is testable without synthesizing one
+  moveModule,
+  // pop-out (§5.15) — "the widget came back in the wrong place" is a *path*
+  // that resolved somewhere else, and neither half is visible from the UI.
+  // poppedOut() also answers "why is getElementById('canvas') null"
+  popOutBrowser, popInBrowser, poppedOut, snapshotDemo, replayDemo,
+  pathOf, resolvePath,
   // widget authoring (§5.8)
   modules, customModules, addWidget, updateWidget, removeWidget,
   openWidgetEditor, renderGallery, scopeModuleCss, validateModuleDef,
@@ -1731,6 +1786,89 @@ record of what was run (§2), so the SQL has to be pasted into the Supabase SQL
 editor by hand. Until it is, the app runs exactly as before and the popover has
 no Analytics row.
 
+### 5.15 Pop-out — the browser in its own window
+
+⧉ at the top right of the canvas moves the browser into a separate OS window,
+so a rep can screen-share *only* the client's page and keep Yotpo Looks — the
+gallery, the Editor, the URL bar, the widget they are about to drop — off the
+call. The pane keeps its grid track and shows a placeholder with a
+**Bring the browser back** button; nothing in the app's layout moves.
+
+**The page reloads on every hop, and that is not a shortcut.** Moving an
+iframe between documents discards its browsing context (HTML spec), and
+creating one in the other window is a fresh navigation either way — there is
+no arrangement in which the live DOM survives. So the honest design is to
+reload and *replay*, which is what `snapshotDemo()` / `replayDemo()` do.
+
+**What moves is the variable, not the node.** `iframe` and `viewportEl` are
+`let`, and popping out points them at a fresh pair created in the other
+window's document; popping in points them back at the pane's own pair, which
+never left and is only blanked to `about:blank` in the meantime. Consequences
+worth keeping:
+
+- **The other window closing can never leave the app without a canvas** —
+  there is nothing to restore, only a variable to reassign. An adoption-based
+  design would have to survive its nodes being destroyed with that window.
+- `bindCanvas()` / `unbindCanvas()` exist because the `load` listener and the
+  `ResizeObserver` belong to *elements*. A fresh iframe carries neither, and a
+  canvas whose load event nobody hears is never analyzed.
+- Everything else in app.js reads those two variables rather than re-querying
+  the DOM, so retargeting is the whole of the move. `layoutViewport()`
+  measures whichever viewport is live, which is why Desktop/Mobile and the
+  scale-to-fit keep working in a differently-sized window for free.
+- **`document.getElementById("canvas")` is null in the app window while
+  popped out.** Console checks in §7 that reach for it directly need
+  `DMB.state.doc` (or `DMB.poppedOut()`) instead.
+
+**Replay addresses elements by path, and the path had to carry identity.** Not
+by section id: ids come from detection, and sub-sections only exist once their
+row has been expanded, so a widget dropped inside an expanded buy box has no
+id to come back to. The first cut recorded a bare child-index chain and failed
+on the very first real pop-in — with the store's JS on, third-party scripts
+inject a *varying number* of top-level `<div>`s (Allbirds ships a pixel
+sandbox, a cart drawer and a spotlight container), so `<main>` is not at the
+same index twice and every path below `body` resolved into an empty div: 0 of
+5 widgets restored. Each step now records tag + id + classes as well as the
+index, and `stepScore()` grades candidates: an exact id decides on its own,
+class overlap grades the rest, the index only breaks ties, and a **different
+tag disqualifies outright** — which is what stops the index fallback anchoring
+a widget to whatever happens to sit at that position now. Our own nodes are
+skipped while counting, which is what lets a path written in a document that
+*has* inserted widgets resolve in one that does not.
+
+- **The page, not `state.sections`, is the source of truth for what is
+  hidden** — `snapshotDemo` reads `.dmb-hidden` from the DOM. Same reasoning
+  that makes `data-dmb-img-orig` authoritative for an imagery revert (§5.11),
+  and it is not theoretical: detection is geometry-based and does not emit
+  exactly the same elements on every load, so a section hidden before one hop
+  came back without a matching entry and silently un-hid itself on the next.
+- **A hidden element that detection did not re-emit gets a row anyway.** It is
+  `display:none` from the moment it is re-hidden and `isSignificant` rejects
+  that, so no later pass can supply one — without this the rep can see the
+  section is gone and has no switch to bring it back. `deepestSectionAround`
+  places it in the tree, the same call `insertModule` uses.
+- **Replayed inserts are `quiet`**: `flash()` scrolls the canvas, and doing
+  that once per widget would park the shared window wherever the last one
+  happened to be.
+- **Document order matters in the snapshot.** Several widgets sharing a parent
+  are each recorded against the *original* sibling they sat in front of, so
+  replaying them out of order would come back reversed.
+- **Imagery waits for the pool.** It is harvested in idle time *after*
+  `initPage`, so a straight re-apply would report "no image on this page fits"
+  about a pool nobody has read yet (`whenImageryReady`, ~6 s then quiet).
+- Replay is **best-effort and says so**: the status line reports "N of M
+  inserted widgets restored" rather than implying success. A store that
+  renders a genuinely different page on reload can still move an anchor. With
+  the JS box *unticked* the page is identical every time and replay is exact —
+  worth knowing when a demo matters more than fidelity.
+
+The other window is deliberately plain: `window.open("")` plus a written
+document holding a `<base>`, `app.css` and one mount div. The `<style>` block
+comes *after* `app.css` because the app's `body` rules describe the
+three-panel shell — `min-width: 1080px` among them (§8 #4) — and this window
+is only ever the canvas. A blocked pop-up is reported in the status line and
+changes nothing else.
+
 ---
 
 ---
@@ -1740,6 +1878,7 @@ no Analytics row.
 ```js
 state = {
   doc, win,        // iframe contentDocument / contentWindow (same-origin)
+  url,             // the page currently in the canvas — what a pop-out reloads (§5.15)
   sections: [{ id: "host-N", el, name, tag, hidden,
                parent,      // parent section entry (null = top level) — the tree
                depth,       // 0 for top level, parent.depth+1 below
@@ -1831,6 +1970,72 @@ the original spec: saving/sharing configurations).
    d.body.dispatchEvent(new DragEvent('dragover', {bubbles:true, cancelable:true, clientY:300, dataTransfer:dt}));
    d.body.dispatchEvent(new DragEvent('drop',     {bubbles:true, cancelable:true, clientY:300, dataTransfer:dt}));
    ```
+4b. **Editor drag & drop** (§5.5), both gestures, driven the real way — the
+   handlers read the DataTransfer, so synthesizing the events exercises the
+   shipping path:
+   ```js
+   const list = document.getElementById("editor-list");
+   const ids = () => [...list.querySelectorAll(".ed-row")].map(r => r.dataset.row);
+   const drag = (src, targetRow, dt = new DataTransfer()) => {
+     src.dispatchEvent(new DragEvent("dragstart", {bubbles:true, cancelable:true, dataTransfer:dt}));
+     const y = targetRow.getBoundingClientRect().top + 2;
+     list.dispatchEvent(new DragEvent("dragover", {bubbles:true, cancelable:true, clientY:y, dataTransfer:dt}));
+     const line = getComputedStyle(list.querySelector(".ed-drop-line")).display;  // "block"
+     list.dispatchEvent(new DragEvent("drop", {bubbles:true, cancelable:true, clientY:y, dataTransfer:dt}));
+     src.dispatchEvent(new DragEvent("dragend", {bubbles:true, cancelable:true, dataTransfer:dt}));
+     return {payload: dt.getData("text/plain"), line};
+   };
+   // a demo row up the list — payload "dmb-move:demo-N", and the DOM moves
+   drag(list.querySelector('[data-row="demo-0"]'), list.querySelector(".ed-row"));
+   // a gallery card onto a row — payload "dmb:<id>", inserts *before* it
+   drag(document.querySelector("#gallery-list [draggable]"), ids-row-of-choice);
+   ```
+   What must hold: the row order after a move reflects the **live DOM**
+   (`renderEditor` re-sorts by document position, so a row that "moved" but
+   whose element didn't will snap back); a card dropped on the gap above a
+   *sub-section* row lands **inside** that sub-section's parent, indented
+   14px, not after the whole section (this is the "gap points at the row
+   below" rule, and getting it backwards is silent — the widget just appears
+   one level out); `state.demos.length` is unchanged by a move and the entry
+   is the same object (`===`), so adapt/bg/blend/imagery ride along; and
+   dragging a row onto its own gap does nothing at all. Dropping a row into
+   the **page** must move rather than duplicate. With nothing loaded the list
+   must decline the drop (no line, no insert).
+   The mousedown guard is worth one manual check: click the color swatch on a
+   demo row and drag sideways — it must open the picker, not drag the row.
+4c. **Pop-out** (§5.15). `window.open` needs a real user gesture, so click ⧉
+   rather than calling it; an automated browser that blocks pop-ups exercises
+   only the refusal path (status line says so, nothing else changes).
+   ```js
+   const before = DMB.snapshotDemo();
+   // click ⧉, wait ~8 s for the reload + replay
+   DMB.poppedOut()                                   // true
+   DMB.state.doc.defaultView.frameElement.ownerDocument !== document   // true
+   document.getElementById("canvas").src             // "about:blank" — the home frame is parked
+   ```
+   The status line must read "N of N inserted widgets restored". Then the
+   check that actually matters, because a widget can come back *present* and
+   in the wrong place — compare anchors, not counts:
+   ```js
+   const sig = (s) => s.demos.map(d => d.moduleId + "@" +
+     d.parent.map(p => p.t + (p.id ? "#" + p.id : "")).join(">"));
+   JSON.stringify(sig(before)) === JSON.stringify(sig(DMB.snapshotDemo()))   // true
+   ```
+   Do it on **Allbirds with JS on** specifically: that page injects a varying
+   number of top-level `<div>`s per load, which is the exact case that broke
+   the first implementation, and a store with quieter scripts will pass a
+   path scheme that cannot survive. Also confirm hidden sections survive
+   **two** hops (out *and* back) — one hop passing proves little, since the
+   failure was an entry going missing on the first hop and the *second*
+   snapshot silently un-hiding it — and that every restored hidden section
+   still has a row whose 🚫 un-hides it.
+   Then: Mobile mode follows the canvas into the other window (iframe 390px,
+   `.viewport.mobile`); a gallery card dropped on the **Editor** still inserts
+   into the popped-out page (that is the placeholder's own claim); closing the
+   other window brings the browser back on its own; and the pop-out document
+   is styled — `[...d.styleSheets].some(s => s.href.endsWith("/app.css"))` and
+   `getComputedStyle(d.body).minWidth === "0px"`, since inheriting the shell's
+   1080px (§8 #4) would put a scrollbar under the client's page.
 5. Repeat on **Brooklinen** (different theme family: serif headings, navy
    accent, 20 sections) — adaptation should visibly differ from Allbirds.
    Then on **Death Wish Coffee** (the dark pole, third sample button): expect
@@ -2694,6 +2899,16 @@ via JS instead (don't chase this as a bug, it's an automation artifact).
   store's font files are blocked cross-origin or loaded by stripped JS, the
   canvas falls back (Brooklinen's body sampled as `Times`). The demo usually
   still convinces because layout/colors/heading fonts carry it.
+- **Popping the browser out reloads the page** (§5.15) — unavoidable, since a
+  browsing context cannot be carried between windows — so the demo is
+  *replayed*, not preserved. Replay is best-effort and reports what it managed:
+  a store whose own JavaScript renders a materially different page on reload
+  can move an anchor out from under a widget, and the page also loses whatever
+  the store's scripts had put on screen (an opened drawer, a chosen size).
+  Sub-section rows come back collapsed, because a sub-section only exists once
+  it has been expanded. With the JS box unticked the page is byte-identical
+  every time and replay is exact. Popping out *before* building the demo costs
+  nothing at all, and is the cheap habit to teach.
 - **Session state is ephemeral** — no save/share of a *demo* (hidden sections +
   inserted modules), no screenshots, no before/after view. Still future work
   (§10). The one thing that *does* persist is the custom-widget library added
@@ -2792,6 +3007,13 @@ is the wrong place to decide it; and **non-Shopify product endpoints**
 each next to `harvestShopify`. What is *not* on this list is inferring
 image content — "is this a face", "does this have text in it" — which is the
 only thing that would close the §9 gaps and needs a model, not a heuristic.
+
+Note that §5.15's `snapshotDemo()` / `replayDemo()` is **most of the
+save-a-demo serializer** that first item has always wanted — a demo already
+round-trips through a full page reload today. What it lacks for persistence is
+only that it holds live element paths rather than something storable, and it
+does not carry the URL or expansion state. Anyone picking up "save & share
+demo configurations" should start there rather than from the sketch below.
 
 Done since: **mobile preview** (§5.6), **user-uploaded custom modules**
 (§5.8 — in-app ＋ dialog + `custom-modules.js`) and **import from a widget

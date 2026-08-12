@@ -7,7 +7,12 @@
 (() => {
   "use strict";
 
-  const iframe = document.getElementById("canvas");
+  /* The canvas iframe and the box it is laid out in. `let`, not `const`:
+   * pop-out (§5.15) swaps both for the twins in the separate window and swaps
+   * them back. Everything else in this file reads these two variables rather
+   * than re-querying the DOM, so retargeting is the whole of the move. */
+  let iframe = document.getElementById("canvas");
+  let viewportEl = document.getElementById("viewport");
   const urlForm = document.getElementById("url-form");
   const urlInput = document.getElementById("url-input");
   const keepScripts = document.getElementById("keep-scripts");
@@ -23,6 +28,7 @@
   const state = {
     doc: null,
     win: null,
+    url: null,      // the page currently in the canvas — what a pop-out reloads
     sections: [],   // host sections (tree): {id, el, name, tag, hidden, parent, depth, expanded, subsChecked}
     demos: [],      // inserted demo modules: {id, el, def, adapted, bg}
     host: null,     // sampled host styles
@@ -134,7 +140,23 @@
   }
 
   let dragBlocked = false; // pointer went down on a card's action button
+
+  /* What is currently being dragged, mirrored out of the DataTransfer.
+   * `dragover` is only allowed to read `dataTransfer.types`, never the data
+   * itself (HTML5 spec), yet both drop targets need to tell a gallery card
+   * ("dmb:<id>", copy) from an Editor row being re-ordered ("dmb-move:<id>",
+   * move) in order to show the right cursor. The drag always starts in this
+   * window, so a plain variable is the honest place to keep that. `drop`
+   * still reads the DataTransfer — this is a hint, not the payload. */
+  let dragPayload = null;
+  const dragIsMove = () => !!dragPayload && dragPayload.startsWith("dmb-move:");
+
   document.addEventListener("mouseup", () => { dragBlocked = false; });
+  // Every way a drag can end arrives here, including the ones that fire no
+  // `dragleave` — Escape, or a drop the target declined while the pointer was
+  // still over the Editor. Without this the list keeps its drag outline until
+  // the next drag starts.
+  document.addEventListener("dragend", () => { dragPayload = null; hideEditorDropLine(); });
 
   function cardButton(label, title, onClick, extraClass) {
     const b = document.createElement("button");
@@ -214,9 +236,10 @@
       if (dragBlocked) { e.preventDefault(); return; }
       e.dataTransfer.setData("text/plain", "dmb:" + def.id);
       e.dataTransfer.effectAllowed = "copy";
+      dragPayload = "dmb:" + def.id;
       card.classList.add("dragging");
     });
-    card.addEventListener("dragend", () => card.classList.remove("dragging"));
+    card.addEventListener("dragend", () => { dragPayload = null; card.classList.remove("dragging"); });
     return card;
   }
 
@@ -296,11 +319,19 @@
     state.sections = [];
     state.demos = [];
     state.host = null;
+    state.url = url;
     emptyState.hidden = true;
     loadingState.hidden = false;
     loadBtn.disabled = true;
     setStatus("Loading " + new URL(url).hostname + "…");
     renderEditor();
+    navigateCanvas(url);
+  }
+
+  /* Point the canvas at a page. Split out of loadPage because pop-out reloads
+   * the *same* URL into a different iframe without resetting the app's state
+   * first — it replays that state once the page is back (§5.15). */
+  function navigateCanvas(url) {
     applyCanvasSandbox(keepScripts.checked);
     iframe.src = "/proxy?url=" + encodeURIComponent(url) + "&scripts=" + (keepScripts.checked ? "1" : "0");
   }
@@ -341,7 +372,10 @@
     }
   });
 
-  iframe.addEventListener("load", () => {
+  /* Named rather than inline so bindCanvas() can move it to the popped-out
+   * iframe and back — a fresh iframe element carries none of the old one's
+   * listeners, and a canvas whose load event nobody hears never gets analyzed. */
+  function onCanvasLoad() {
     if (!iframe.src || iframe.src === "about:blank") return;
     // Give the page a beat to lay out (fonts/images affect section geometry).
     setTimeout(() => {
@@ -353,8 +387,30 @@
       }
       loadingState.hidden = true;
       loadBtn.disabled = false;
+      // A pop-out (or pop-in) reloads the page in the other window's frame;
+      // put the rep's demo back on top of the freshly detected sections.
+      if (pendingReplay) {
+        const snap = pendingReplay;
+        pendingReplay = null;
+        replayDemo(snap);
+      }
     }, 700);
-  });
+  }
+
+  /* Wire the live iframe/viewport pair. Both the load listener and the resize
+   * watcher belong to specific elements, so a pop-out has to move them; this
+   * is the one place that knows how. */
+  const vpObserver = new ResizeObserver(() => layoutViewport());
+  function bindCanvas() {
+    iframe.addEventListener("load", onCanvasLoad);
+    vpObserver.disconnect();
+    vpObserver.observe(viewportEl);
+    layoutViewport();
+  }
+  function unbindCanvas() {
+    iframe.removeEventListener("load", onCanvasLoad);
+    vpObserver.disconnect();
+  }
 
   /* ------------------------------------------------------ page analysis */
   function initPage() {
@@ -978,7 +1034,7 @@
     doc.addEventListener("dragover", (e) => {
       if (!Array.from(e.dataTransfer.types).includes("text/plain")) return;
       e.preventDefault();
-      e.dataTransfer.dropEffect = "copy";
+      e.dataTransfer.dropEffect = dragIsMove() ? "move" : "copy";
       const pt = insertionPointAt(e.clientX, e.clientY);
       state.pendingDrop = pt;
       if (pt) {
@@ -998,17 +1054,35 @@
     doc.addEventListener("drop", (e) => {
       indicator.style.display = "none";
       const data = e.dataTransfer.getData("text/plain") || "";
-      if (!data.startsWith("dmb:")) return;
+      if (!data.startsWith("dmb:") && !data.startsWith("dmb-move:")) return;
       e.preventDefault();
-      insertModule(data.slice(4), state.pendingDrop);
+      applyDrop(data, state.pendingDrop);
       state.pendingDrop = null;
     });
   }
 
   /* ----------------------------------------------------- module actions */
-  function insertModule(moduleId, point) {
+  /* Put `el` where `point` says. Two shapes, because two callers need two
+   * different things: a drop knows a sibling to land next to ({ref, where}),
+   * while a replay knows the exact parent and the original element it used to
+   * sit in front of ({parent, before} — `before: null` means it was last). */
+  function placeModule(el, point) {
+    if (point && point.parent && point.parent.isConnected) {
+      const before = point.before && point.before.parentNode === point.parent ? point.before : null;
+      point.parent.insertBefore(el, before);
+    } else if (point && point.ref && point.ref.isConnected) {
+      point.ref.parentNode.insertBefore(el, point.where === "before" ? point.ref : point.ref.nextSibling);
+    } else {
+      (state.doc.querySelector("main") || state.doc.body).appendChild(el);
+    }
+  }
+
+  /* `quiet` skips the flash + status line: a replay inserts several modules in
+   * a row, and scrolling the canvas to each one in turn would leave the popped
+   * out window parked wherever the last widget happened to be. */
+  function insertModule(moduleId, point, quiet) {
     const def = DEMO_MODULES.find((m) => m.id === moduleId);
-    if (!def || !state.doc) return;
+    if (!def || !state.doc) return null;
 
     const el = state.doc.createElement("div");
     // The scope class is what connects this instance to *its own* CSS —
@@ -1019,11 +1093,7 @@
     el.setAttribute("data-dmb-id", id);
     el.setAttribute("data-dmb-kind", "demo");
 
-    if (point && point.ref.isConnected) {
-      point.ref.parentNode.insertBefore(el, point.where === "before" ? point.ref : point.ref.nextSibling);
-    } else {
-      (state.doc.querySelector("main") || state.doc.body).appendChild(el);
-    }
+    placeModule(el, point);
 
     // imagery starts OFF (§5.11): theme adaptation is on by default because it
     // is reversible and always an improvement; imagery replaces *content*, and
@@ -1035,9 +1105,135 @@
     for (let p = deepestSectionAround(el); p; p = p.parent) p.expanded = true;
     toggleAdapt(entry); // auto-adapt to host styling on insert
     renderEditor();
-    flash(el);
-    setStatus(`Inserted “${def.name}” — styled to match the site`, "ok");
+    if (!quiet) {
+      flash(el);
+      setStatus(`Inserted “${def.name}” — styled to match the site`, "ok");
+    }
+    return entry;
   }
+
+  /* Re-anchor an already-inserted module (Editor row drag, §5.5). Moving the
+   * element is the whole operation — everything the instance carries (adapt
+   * state, background, blend, imagery swaps) lives on the node, and the Editor
+   * re-sorts by live document position, so the row follows on its own. */
+  function moveModule(entry, point) {
+    if (!entry || !entry.el.isConnected) return;
+    placeModule(entry.el, point);
+    for (let p = deepestSectionAround(entry.el); p; p = p.parent) p.expanded = true;
+    renderEditor();
+    flash(entry.el);
+    setStatus(`Moved “${entry.def.name}”`, "ok");
+  }
+
+  /* One drop, two payloads. Both targets — the page and the Editor list —
+   * speak the same vocabulary, so neither has to know which gesture it is
+   * serving: "dmb:<widget id>" inserts a new instance, "dmb-move:<demo id>"
+   * re-anchors an existing one. */
+  function applyDrop(data, point) {
+    if (data.startsWith("dmb-move:")) {
+      const entry = state.demos.find((d) => d.id === data.slice(9));
+      // Dropping a row on itself is a no-op, not a re-insert with a flash.
+      if (entry && !(point && point.ref === entry.el)) moveModule(entry, point);
+      return;
+    }
+    insertModule(data.slice(4), point);
+  }
+
+  /* ---------------------------- the Editor list as a drop target (§5.5)
+   * Two gestures land here and they differ only in the last line: a gallery
+   * card inserts a widget (the same as dropping on the page — and the only
+   * way to insert one while the browser is popped out, §5.15), and a demo row
+   * re-anchors a widget that is already on the page.
+   *
+   * The rule for both is "a gap points at the row *below* it", i.e. insert
+   * before that row's element. "After the row above" reads the same on screen
+   * and is wrong: after a container means after everything the container
+   * holds, so every drop into an expanded section would jump out of it. */
+  const editorDropLine = document.createElement("div");
+  editorDropLine.className = "ed-drop-line";
+  let editorDropPoint = null;
+
+  function showEditorDropLine(y) {
+    // renderEditor() clears the list, so re-attach rather than assume.
+    if (editorDropLine.parentNode !== editorList) editorList.appendChild(editorDropLine);
+    editorDropLine.style.top = y + "px";
+    editorDropLine.style.display = "block";
+    editorList.classList.add("drop-active");
+  }
+
+  function hideEditorDropLine() {
+    editorDropLine.style.display = "none";
+    editorList.classList.remove("drop-active");
+  }
+
+  /* Nearest gap to the pointer, as {point, y}: `point` for placeModule(), `y`
+   * in the list's scrolled coordinate space for the indicator. */
+  function editorGapAt(clientY) {
+    const dragged = dragIsMove() ? state.demos.find((d) => d.id === dragPayload.slice(9)) : null;
+    const rows = [];
+    for (const row of editorList.querySelectorAll(".ed-row")) {
+      const entry = findEntry(row.dataset.row);
+      // A row whose element is gone, and the dragged row itself: aiming at
+      // your own gap can only mean "leave it where it is".
+      if (!entry || !entry.el || !entry.el.isConnected) continue;
+      if (dragged && entry.el === dragged.el) continue;
+      rows.push({ entry, rect: row.getBoundingClientRect() });
+    }
+    if (!rows.length) return { point: null, y: 6 };
+
+    const listRect = editorList.getBoundingClientRect();
+    const toLocal = (clientYPos) => clientYPos - listRect.top + editorList.scrollTop;
+
+    let best = { point: { ref: rows[0].entry.el, where: "before" }, y: toLocal(rows[0].rect.top) - 3 };
+    let bestDist = Math.abs(clientY - rows[0].rect.top);
+    for (let i = 1; i < rows.length; i++) {
+      const d = Math.abs(clientY - rows[i].rect.top);
+      if (d < bestDist) {
+        bestDist = d;
+        best = { point: { ref: rows[i].entry.el, where: "before" }, y: toLocal(rows[i].rect.top) - 3 };
+      }
+    }
+    // The gap past the last row is the only one that cannot be expressed as
+    // "before something", so it is the one place "after" is correct.
+    const last = rows[rows.length - 1];
+    if (Math.abs(clientY - last.rect.bottom) < bestDist) {
+      best = { point: { ref: last.entry.el, where: "after" }, y: toLocal(last.rect.bottom) - 1 };
+    }
+    return best;
+  }
+
+  editorList.addEventListener("dragover", (e) => {
+    // dragPayload rather than dataTransfer.types: both gestures start in this
+    // window, so this also declines a stray text/file drag from elsewhere,
+    // which would otherwise draw a drop line that means nothing.
+    if (!dragPayload) return;
+    if (!state.doc) return; // no page loaded — nowhere to put anything
+    e.preventDefault();
+    e.dataTransfer.dropEffect = dragIsMove() ? "move" : "copy";
+
+    // Nudge the list when the pointer sits near an edge: on a 20-section page
+    // the row you are aiming for is usually off screen when the drag starts.
+    const lr = editorList.getBoundingClientRect();
+    if (e.clientY - lr.top < 30) editorList.scrollTop -= 14;
+    else if (lr.bottom - e.clientY < 30) editorList.scrollTop += 14;
+
+    const gap = editorGapAt(e.clientY);
+    editorDropPoint = gap.point;
+    showEditorDropLine(gap.y);
+  });
+
+  editorList.addEventListener("dragleave", (e) => {
+    if (!e.relatedTarget || !editorList.contains(e.relatedTarget)) hideEditorDropLine();
+  });
+
+  editorList.addEventListener("drop", (e) => {
+    hideEditorDropLine();
+    const data = e.dataTransfer.getData("text/plain") || "";
+    if (!data.startsWith("dmb:") && !data.startsWith("dmb-move:")) return;
+    e.preventDefault();
+    applyDrop(data, editorDropPoint);
+    editorDropPoint = null;
+  });
 
   /* The adaptation contract: every themable attribute of a module is one of
    * these variables, so Adapt is "set them from the host palette" and Revert
@@ -1244,6 +1440,14 @@
         caret.addEventListener("click", (e) => { e.stopPropagation(); toggleExpand(entry); });
       }
       row.appendChild(caret);
+    } else {
+      // Grab handle. It also occupies the column the host rows spend on their
+      // caret, so demo and host names line up instead of stepping left.
+      const grip = document.createElement("span");
+      grip.className = "ed-grip";
+      grip.textContent = "⠿";
+      grip.title = "Drag to move this widget up or down the page";
+      row.appendChild(grip);
     }
 
     const name = document.createElement("span");
@@ -1318,6 +1522,27 @@
 
     row.append(name, tag, actions);
     row.addEventListener("click", () => { if (!dimmed) flash(entry.el); });
+
+    /* Demo rows drag to re-order (§5.5). The payload is the same "dmb-" text
+     * vocabulary the gallery cards use, so the page and the Editor list can
+     * serve both gestures with one drop handler each. */
+    if (isDemo) {
+      row.draggable = true;
+      // Same trap the gallery cards hit: on a draggable element a mousedown on
+      // the color swatch or an action button starts a drag instead of working
+      // the control, so the row's dragstart checks the flag they set.
+      for (const c of actions.children) c.addEventListener("mousedown", () => { dragBlocked = true; });
+      row.addEventListener("dragstart", (e) => {
+        if (dragBlocked) { e.preventDefault(); return; }
+        dragPayload = "dmb-move:" + entry.id;
+        e.dataTransfer.setData("text/plain", dragPayload);
+        e.dataTransfer.effectAllowed = "move";
+        row.classList.add("dragging");
+      });
+      // dragPayload and the drop line are cleared by the document-level
+      // dragend; this only has to undo the row's own dimming.
+      row.addEventListener("dragend", () => row.classList.remove("dragging"));
+    }
     return row;
   }
 
@@ -1327,7 +1552,6 @@
    * push the site into its mobile layout. When the canvas column is narrower
    * than DESKTOP_W, the iframe is rendered at DESKTOP_W and scaled down to
    * fit (transform doesn't affect the iframe's internal viewport). */
-  const viewportEl = document.getElementById("viewport");
   const vpToggle = document.getElementById("vp-toggle");
   const DESKTOP_W = 1280;
   const MOBILE_W = 390;
@@ -1367,8 +1591,7 @@
     if (state.doc) setTimeout(redetectSections, 350);
   });
 
-  new ResizeObserver(layoutViewport).observe(viewportEl);
-  layoutViewport();
+  bindCanvas();
 
   /* ------------------------------------------------- gallery collapse */
   const layoutRoot = document.querySelector(".layout");
@@ -1379,6 +1602,351 @@
     galleryToggle.title = collapsed ? "Expand gallery" : "Collapse gallery";
     // ResizeObserver rescales the canvas automatically as the column grows.
   });
+
+  /* ============================== pop the browser into its own window (§5.15)
+   * So a rep can screen-share *only* the client's page on a call and keep
+   * Yotpo Looks — the gallery, the Editor, the URL bar — off screen.
+   *
+   * The canvas cannot be carried across: moving an iframe between documents
+   * discards its browsing context, and creating one in the other window is a
+   * fresh navigation either way. So the page reloads on every pop-out and
+   * pop-in, and the rep's work is re-applied afterwards (snapshotDemo /
+   * replayDemo below). What does *not* move is the app's own DOM — the home
+   * viewport and canvas stay in the pane, dormant, and popping in is a
+   * retarget back to them rather than a rebuild. That is the whole reason the
+   * other window closing cannot leave the app without a canvas. */
+  const browserSection = document.querySelector(".browser");
+  const popoutBtn = document.getElementById("popout-btn");
+  const poppedState = document.getElementById("browser-popped");
+  const popinBtn = document.getElementById("popin-btn");
+  const homeViewport = viewportEl;
+  const homeCanvas = iframe;
+  let popoutWin = null;
+  let popoutPoll = null;
+
+  /* <base> so the relative asset links resolve: window.open("") gives an
+     about:blank document, and leaving it to inherit the opener's base URL is
+     the kind of thing that works until it doesn't. The <style> block comes
+     after app.css deliberately — the app's body rules describe the
+     three-panel shell (min-width: 1080px among them, §8 #4) and this window
+     is only ever the canvas. */
+  const POPOUT_DOC = `<!DOCTYPE html><html><head><meta charset="utf-8">
+<base href="__BASE__">
+<title>Yotpo Looks — page preview</title>
+<link rel="icon" type="image/png" href="logo.png">
+<link rel="stylesheet" href="app.css">
+<style>
+  html, body { margin: 0; height: 100%; min-width: 0; overflow: hidden; background: #fff; }
+  #dmb-popout-mount { position: absolute; inset: 0; }
+</style></head><body><div id="dmb-popout-mount"></div></body></html>`;
+
+  function popOutBrowser() {
+    if (popoutWin && !popoutWin.closed) { popoutWin.focus(); return; }
+    const w = window.open("", "dmb-browser", "width=1280,height=900,menubar=no,toolbar=no,location=no");
+    if (!w) {
+      setStatus("The browser window was blocked — allow pop-ups for this site, then try again.", "err");
+      return;
+    }
+    w.document.open();
+    w.document.write(POPOUT_DOC.replace("__BASE__", location.href));
+    w.document.close();
+
+    /* Prove the written document survived before touching anything here.
+     * window.open("") + document.write is the standard pattern and the
+     * about:blank it replaces has no pending navigation to overwrite it — but
+     * everything below blanks the home canvas and retargets onto that mount,
+     * so a missing mount would strand the app half-popped with no browser at
+     * all. Bailing costs one closed window; not bailing costs the session. */
+    const mount = w.document.getElementById("dmb-popout-mount");
+    if (!mount) {
+      w.close();
+      setStatus("Could not set up the browser window — nothing changed, try again.", "err");
+      return;
+    }
+
+    popoutWin = w;
+    const snap = snapshotDemo();
+
+    unbindCanvas();
+    iframe.src = "about:blank"; // the home frame must not keep rendering a second copy
+
+    viewportEl = w.document.createElement("div");
+    viewportEl.id = "viewport";
+    viewportEl.className = "viewport";
+    iframe = w.document.createElement("iframe");
+    iframe.id = "canvas";
+    iframe.title = "Loaded product page";
+    viewportEl.appendChild(iframe);
+    mount.appendChild(viewportEl);
+    bindCanvas();
+    // A ResizeObserver on an element in another document does fire, but the
+    // window's own resize event is the signal that is beyond doubt.
+    w.addEventListener("resize", layoutViewport);
+
+    browserSection.classList.add("popped");
+    poppedState.hidden = false;
+    // The nodes are safe either way, but the app must not sit showing the
+    // placeholder for a window that is already gone.
+    w.addEventListener("pagehide", onPopoutClosed);
+    w.addEventListener("beforeunload", onPopoutClosed);
+    popoutPoll = setInterval(() => { if (!popoutWin || popoutWin.closed) onPopoutClosed(); }, 500);
+
+    reopenCanvas(snap, "Browser popped out — share that window on your call");
+  }
+
+  function popInBrowser() {
+    if (!popoutWin) return;
+    const w = popoutWin;
+    popoutWin = null;
+    clearInterval(popoutPoll);
+    popoutPoll = null;
+    w.removeEventListener("pagehide", onPopoutClosed);
+    w.removeEventListener("beforeunload", onPopoutClosed);
+    w.removeEventListener("resize", layoutViewport);
+
+    // Taken before the retarget, and defensively: on the window-closed path
+    // this runs during the other document's unload, where reading its frame
+    // is allowed but not something to stake the app on.
+    let snap = null;
+    try { snap = snapshotDemo(); } catch (err) { console.warn("[dmb] pop-in: could not read the demo", err); }
+
+    unbindCanvas();
+    iframe = homeCanvas;
+    viewportEl = homeViewport;
+    bindCanvas();
+
+    browserSection.classList.remove("popped");
+    poppedState.hidden = true;
+    if (!w.closed) w.close();
+
+    reopenCanvas(snap, "Browser back in Yotpo Looks");
+  }
+
+  function onPopoutClosed() { if (popoutWin) popInBrowser(); }
+
+  /* Re-load the current page into whichever canvas is now live and put the
+   * snapshot back on top of it. Everything the old document held is gone, so
+   * the app's page state is cleared here rather than trusted to survive. */
+  function reopenCanvas(snap, msg) {
+    state.sections = [];
+    state.demos = [];
+    state.host = null;
+    renderEditor();
+    if (!state.url) {
+      setStatus(msg);
+      return;
+    }
+    pendingReplay = snap;
+    replayMsg = msg;
+    loadingState.hidden = false;
+    loadBtn.disabled = true;
+    setStatus(msg + " — reloading the page…");
+    navigateCanvas(state.url);
+  }
+
+  popoutBtn.addEventListener("click", popOutBrowser);
+  popinBtn.addEventListener("click", popInBrowser);
+  // The other window is a child of this one: closing the app closes it too,
+  // rather than leaving an orphan window nothing can drive.
+  window.addEventListener("pagehide", () => {
+    if (popoutWin && !popoutWin.closed) popoutWin.close();
+  });
+
+  /* ---------------- putting a demo back after the canvas reloads (§5.15) ----
+   * Elements are addressed by a path down the tree rather than by section id.
+   * Ids come from detection, and sub-sections only exist once their row has
+   * been expanded — so a widget dropped inside an expanded buy box has no id
+   * to come back to, while a path is independent of all of that. Our own nodes
+   * are skipped while counting, which is what lets a path written in a
+   * document that *has* inserted widgets resolve in one that does not.
+   *
+   * Each step records what the element *was*, not just where it sat. A bare
+   * child index is not survivable: with the store's own JS on, third-party
+   * scripts inject a varying number of top-level <div>s (Allbirds' pixel
+   * sandbox, cart drawer and spotlight containers), so <main> is not at the
+   * same index twice and every path below body resolved into an empty div on
+   * the first real pop-in. Matching on tag + id + classes and using the index
+   * only to break ties makes the path self-correcting: the identity of a
+   * Shopify section survives siblings appearing beside it.
+   *
+   * Best-effort by nature — a store that renders a genuinely different page on
+   * reload can still move an anchor out from under us, so replayDemo reports
+   * what it actually managed rather than assuming. */
+  function isOurNode(el) {
+    // el.id is not reliably a string (§8 #5).
+    const id = el.getAttribute("id");
+    return !!(id && id.startsWith("dmb-")) || el.getAttribute("data-dmb-kind") === "demo";
+  }
+
+  const classTokens = (el) => (el.getAttribute("class") || "").trim().split(/\s+/).filter(Boolean);
+
+  function liveChildren(el) {
+    const kids = [];
+    for (let s = el.firstElementChild; s; s = s.nextElementSibling) if (!isOurNode(s)) kids.push(s);
+    return kids;
+  }
+
+  function pathOf(el) {
+    const path = [];
+    const root = el.ownerDocument.documentElement;
+    for (let n = el; n && n !== root && n.parentElement; n = n.parentElement) {
+      path.push({
+        i: liveChildren(n.parentElement).indexOf(n),
+        t: n.tagName,
+        id: n.getAttribute("id") || "",
+        c: classTokens(n),
+      });
+    }
+    return path.reverse();
+  }
+
+  /* How well a candidate answers one step. 0 disqualifies: a step never
+   * matches an element of a different kind, which is what stops the index
+   * fallback from anchoring a widget to whatever happens to sit at that
+   * position now. Above that, an exact id decides on its own, class overlap
+   * grades the rest, and the recorded index only breaks ties — so a classless
+   * <div> among classless <div>s still resolves by position. */
+  function stepScore(el, step) {
+    if (el.tagName !== step.t) return 0;
+    let score = 1;
+    const id = el.getAttribute("id") || "";
+    if (step.id) score += id === step.id ? 100 : id ? -0.5 : 0;
+    if (step.c.length) {
+      const has = new Set(classTokens(el));
+      let shared = 0;
+      for (const c of step.c) if (has.has(c)) shared++;
+      score += (shared / step.c.length) * 10;
+    }
+    return score;
+  }
+
+  function resolvePath(doc, path) {
+    let n = doc.documentElement;
+    for (const step of path) {
+      const kids = liveChildren(n);
+      let hit = null;
+      let best = 0;
+      let bestDist = Infinity;
+      for (let i = 0; i < kids.length; i++) {
+        const score = stepScore(kids[i], step);
+        if (score <= 0) continue;
+        const dist = Math.abs(i - step.i);
+        if (score > best || (score === best && dist < bestDist)) {
+          hit = kids[i];
+          best = score;
+          bestDist = dist;
+        }
+      }
+      if (!hit) return null;
+      n = hit;
+    }
+    return n;
+  }
+
+  function snapshotDemo() {
+    if (!state.doc || !state.doc.body) return null;
+    const snap = { hidden: [], demos: [] };
+    // The page, not state.sections, is the source of truth for what is hidden
+    // — the same reasoning that makes data-dmb-img-orig authoritative for an
+    // imagery revert (§5.11). Detection is geometry-based and does not emit
+    // exactly the same elements on every load, so a section hidden before one
+    // hop can come back without a matching entry; reading the class keeps it
+    // hidden across the next hop too instead of quietly un-hiding it.
+    for (const el of state.doc.querySelectorAll(".dmb-hidden")) snap.hidden.push(pathOf(el));
+    // Document order matters: several widgets sharing one parent are each
+    // recorded against the *original* sibling they sat in front of, so
+    // replaying them out of order would come back reversed.
+    const live = state.demos.filter((d) => d.el.isConnected);
+    live.sort((a, b) =>
+      a.el.compareDocumentPosition(b.el) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1);
+    for (const d of live) {
+      let next = d.el.nextElementSibling;
+      while (next && isOurNode(next)) next = next.nextElementSibling;
+      snap.demos.push({
+        moduleId: d.def.id,
+        parent: pathOf(d.el.parentElement),
+        before: next ? pathOf(next) : null, // null = it was the last child
+        adapted: d.adapted,
+        bg: d.bg,
+        flat: d.flat,
+        imagery: d.imagery,
+        imageryVariant: d.imageryVariant || 0,
+      });
+    }
+    return snap;
+  }
+
+  let pendingReplay = null;
+  let replayMsg = "";
+
+  function replayDemo(snap) {
+    const msg = replayMsg || "Page reloaded";
+    replayMsg = "";
+    if (!snap || !state.doc) return;
+    const doc = state.doc;
+
+    for (const p of snap.hidden) {
+      const el = resolvePath(doc, p);
+      if (!el) continue;
+      let entry = state.sections.find((s) => s.el === el);
+      if (!entry) {
+        /* Detection did not offer this element a row this time. Hiding it
+         * anyway would leave the page right and the Editor with no switch —
+         * and no later pass can supply one, because the element is
+         * display:none from here on and isSignificant rejects that. So give
+         * it a row now, where it actually sits in the tree. */
+        const parent = deepestSectionAround(el);
+        entry = parent ? makeSubEntry(el, parent) : makeSectionEntry(el);
+        state.sections.push(entry);
+        for (let p2 = parent; p2; p2 = p2.parent) p2.expanded = true;
+      }
+      entry.hidden = true;
+      el.classList.add("dmb-hidden");
+    }
+
+    const wantImagery = [];
+    let ok = 0;
+    for (const d of snap.demos) {
+      const parent = resolvePath(doc, d.parent);
+      if (!parent) continue;
+      const entry = insertModule(d.moduleId, { parent, before: d.before ? resolvePath(doc, d.before) : null }, true);
+      if (!entry) continue;
+      ok++;
+      if (!d.adapted) toggleAdapt(entry); // insertModule adapts by default
+      if (d.bg) setModuleBg(entry, d.bg);
+      if (d.flat) toggleFlat(entry);
+      if (d.imagery) {
+        entry.imagery = true;
+        entry.imageryVariant = d.imageryVariant;
+        wantImagery.push(entry);
+      }
+    }
+    renderEditor();
+
+    // The image pool is harvested in idle time *after* initPage, so it is
+    // usually not there yet — wait for it rather than report "no image fits"
+    // about a pool nobody has read (§5.11).
+    if (wantImagery.length) {
+      whenImageryReady(() => { wantImagery.forEach(refreshImagery); renderEditor(); });
+    }
+
+    const lost = snap.demos.length - ok;
+    setStatus(
+      snap.demos.length
+        ? `${msg} — ${ok} of ${snap.demos.length} inserted widget${snap.demos.length === 1 ? "" : "s"} restored` +
+          (lost ? ", the rest could not be placed on the reloaded page" : "")
+        : msg,
+      lost ? "warn" : "ok"
+    );
+  }
+
+  function whenImageryReady(fn, tries) {
+    if (!window.IMAGERY) return;
+    const n = tries || 0;
+    if (state.imagery && !state.imagery.scanning) { fn(); return; }
+    if (n > 30) { if (state.imagery) fn(); return; } // ~6 s, then give up quietly
+    setTimeout(() => whenImageryReady(fn, n + 1), 200);
+  }
 
   /* ====================================== import a widget from a preview link
    * The user pastes a widget-preview URL (e.g. a Yotpo yap.yotpo.com preview).
@@ -3193,6 +3761,15 @@
     // empty pool or an all-skip slot list, and both are only visible from here
     toggleImagery, shuffleImagery, harvestImagery, imageryTargets, imagery: () => state.imagery,
     loadPage, layoutViewport, redetectSections,
+    // Editor re-ordering (§5.5): moveModule takes the same {ref, where} /
+    // {parent, before} point insertModule does, so a drag is testable without
+    // synthesizing one.
+    moveModule,
+    // Pop-out (§5.15). The replay pair is here because a widget that comes
+    // back in the wrong place is a *path* that resolved somewhere else, and
+    // neither the snapshot nor the resolution is visible from the UI.
+    popOutBrowser, popInBrowser, snapshotDemo, replayDemo, pathOf, resolvePath,
+    poppedOut: () => !!(popoutWin && !popoutWin.closed),
     // widget authoring
     modules: DEMO_MODULES, customModules: CUSTOM_MODULES,
     addWidget: (def) => { const r = registerModule(def, "local"); if (r.ok) saveWidgetRemote(r.def); return r; },

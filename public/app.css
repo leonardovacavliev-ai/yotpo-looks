@@ -30,6 +30,14 @@ html:root {
   --danger-ink: color-mix(in srgb, var(--danger) 72%, var(--foreground));
   --ok-ink: color-mix(in srgb, var(--ok) 72%, var(--foreground));
   --warn-ink: color-mix(in srgb, var(--warn) 55%, var(--foreground));
+
+  /* Inserted demo modules are one recognisable thing across the whole app: the
+     in-page hover outline and drop indicator are this indigo (IFRAME_UI_CSS in
+     app.js), so the Editor's demo rows and both drop lines wear washes of the
+     same hue. A literal rather than a token on purpose — the Tailwind token
+     set's --primary is achromatic, and a *colored* backdrop is the entire
+     point of the row tint. Keep it in step with IFRAME_UI_CSS if it changes. */
+  --demo: #6366f1;
 }
 
 html, body {
@@ -337,7 +345,29 @@ body.booting .layout { visibility: hidden; }
 .panel-empty { color: var(--muted); font-size: 12.5px; padding: 8px 4px; }
 
 /* ---------- Editor list ---------- */
-.editor-list { overflow-y: auto; padding: 10px; flex: 1; }
+/* position: relative so the drag indicator can be absolutely placed against
+   the list's own padding box rather than inserted into the row flow — an
+   inserted line would shift every gap it is trying to point at. */
+.editor-list { overflow-y: auto; padding: 10px; flex: 1; position: relative; }
+
+/* Where a dragged widget would land: a gallery card dropped onto the Editor,
+   or a demo row dragged to a new position. Same indigo as #dmb-indicator in
+   the page, so the two drop targets read as one gesture. */
+.ed-drop-line {
+  position: absolute;
+  left: 8px; right: 8px;
+  height: 3px;
+  border-radius: 99px;
+  background: var(--demo);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--demo) 28%, transparent);
+  pointer-events: none;
+  z-index: 3;
+  display: none;
+}
+.editor-list.drop-active {
+  outline: 1px dashed color-mix(in srgb, var(--demo) 55%, transparent);
+  outline-offset: -4px;
+}
 
 .ed-row {
   display: flex;
@@ -352,8 +382,30 @@ body.booting .layout { visibility: hidden; }
 }
 .ed-row:hover { background: var(--panel-2); border-color: var(--line); }
 .ed-row.hidden-row { opacity: .45; }
-.ed-row.demo-row { border-color: color-mix(in srgb, var(--accent) 45%, transparent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
-.ed-row.demo-row:hover { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+/* Inserted widgets get a pale indigo backdrop and a solid edge stripe so they
+   are findable at a glance in a list of 20 grey host rows. The stripe is an
+   inset shadow, not a border, so it survives .sub-row's own left border. */
+.ed-row.demo-row {
+  border-color: color-mix(in srgb, var(--demo) 45%, transparent);
+  background: color-mix(in srgb, var(--demo) 14%, transparent);
+  box-shadow: inset 3px 0 0 var(--demo);
+}
+.ed-row.demo-row:hover { background: color-mix(in srgb, var(--demo) 22%, transparent); }
+.ed-row.demo-row.dragging { opacity: .35; }
+
+/* Drag handle on demo rows. It also fills the column the host rows spend on
+   their caret, so demo and host names stay aligned. */
+.ed-grip {
+  width: 16px;
+  flex: 0 0 auto;
+  text-align: center;
+  font-size: 11px;
+  line-height: 1;
+  color: color-mix(in srgb, var(--demo) 75%, var(--muted));
+  cursor: grab;
+  user-select: none;
+}
+.ed-row.demo-row:active .ed-grip { cursor: grabbing; }
 
 .ed-row .caret,
 .ed-row .caret-spacer {
@@ -385,7 +437,10 @@ body.booting .layout { visibility: hidden; }
   text-transform: lowercase;
   flex: 0 0 auto;
 }
-.demo-row .ed-tag { color: var(--accent-2); border-color: color-mix(in srgb, var(--accent) 50%, transparent); }
+.demo-row .ed-tag {
+  color: color-mix(in srgb, var(--demo) 80%, var(--text));
+  border-color: color-mix(in srgb, var(--demo) 50%, transparent);
+}
 
 .ed-actions { display: flex; gap: 4px; align-items: center; flex: 0 0 auto; }
 
@@ -459,6 +514,53 @@ body.booting .layout { visibility: hidden; }
 .samples button:hover { border-color: var(--accent); color: var(--accent-2); }
 
 .browser-loading { flex-direction: column; gap: 14px; color: var(--muted); }
+
+/* ---------- Pop-out (§5.15) ---------- */
+/* Over the canvas, so it dims to near-invisible until the pointer is in the
+   pane — it sits on top of the client's own page and must not read as part
+   of it in a screen share. */
+.popout-btn {
+  position: absolute;
+  top: 10px; right: 12px;
+  z-index: 7;
+  border: 0;
+  border-radius: 8px;
+  background: rgba(20, 22, 31, .72);
+  color: #fff;
+  font: 600 11.5px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  padding: 7px 10px;
+  cursor: pointer;
+  opacity: .32;
+  transition: opacity .15s ease, background .15s ease;
+}
+.browser:hover .popout-btn { opacity: 1; }
+.popout-btn:hover { background: var(--demo); }
+.browser.popped .popout-btn { display: none; }
+
+/* Placeholder while the canvas lives in the other window. The pane keeps its
+   grid track, so nothing in the app's layout moves on pop-out. */
+.browser-popped {
+  position: absolute; inset: 0;
+  z-index: 8;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--bg);
+}
+/* UA display:none for [hidden] loses to the rule above — see §8 #1. */
+.browser-popped[hidden] { display: none; }
+.browser-popped h1 { font-size: 18px; margin: 0 0 8px; }
+.browser-popped p { color: var(--muted); font-size: 13px; }
+.popin-btn {
+  margin-top: 18px;
+  background: var(--demo);
+  border: 0;
+  border-radius: 8px;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 10px 18px;
+  cursor: pointer;
+}
+.popin-btn:hover { background: color-mix(in srgb, var(--demo) 82%, #000); }
 .spinner {
   width: 34px; height: 34px;
   border: 3px solid var(--line);

@@ -53,9 +53,14 @@ that store's code with the app's access.
   **▸ arrow** to expand the section and reveal the smaller blocks inside it —
   e.g. just the star-rating line inside a product buy box — each of which can
   be hidden individually or used as a drop target for gallery modules.
+  Widgets you have inserted stand out with a **pale indigo backdrop** and a
+  **⠿** handle: drag them up and down the list to move them around the page.
+  You can also drag a card straight from the Gallery onto the list — a line
+  shows where it will land, and it goes in just above the row you drop it on.
 - **Browser (center)** — hover any detected section for a control chip with a
   **Hide** button. Drag gallery modules here; an insertion line shows where the
-  module will land.
+  module will land. **⧉ Pop out**, top right, moves the page into its own
+  window — see below.
 - **Gallery (right)** — your widget library. It starts **empty**: fill it with
   the widgets you actually demo. **＋** adds one — paste a **widget-preview link** and
   Import to capture a real widget as it looks right now, or paste HTML/CSS by
@@ -71,6 +76,22 @@ Inserted modules automatically inherit the host site's fonts, text color,
 accent/button color and corner radius. **Revert CSS** restores the module's
 default styling if the adaptation clashes; the color swatch changes the
 module's background.
+
+## Sharing just the page on a call
+
+**⧉ Pop out** in the top right of the Browser moves the client's page into a
+separate window. Share *that* window on the call and the client sees their own
+site and nothing else — no gallery, no URL bar, no widget you are about to try.
+Yotpo Looks stays on your screen and keeps working: hide sections from the
+Editor, and drag widgets from the Gallery onto an Editor row to insert them.
+The middle of the app shows a **Bring the browser back** button, and closing
+the separate window brings it back too.
+
+One thing to know: the page **reloads** when it moves between windows — that is
+just how browsers work — and the app puts your inserted widgets and hidden
+sections back afterwards. It tells you how many it restored. It is near enough
+to exact on most stores, but if a page is fussy, the habit worth having is to
+pop out *first* and build the demo after.
 
 ## Site photos
 
